@@ -19,7 +19,7 @@ function json_out($arr){
 @date_default_timezone_set('America/Sao_Paulo');
 $conn->query("SET time_zone = '-03:00'");
 
-log_event("RELOGIN_START", ["post" => $_POST]);
+log_event("RELOGIN_START");
 
 $nome  = trim($_POST['nome'] ?? '');
 $token = trim($_POST['token'] ?? '');
@@ -31,13 +31,13 @@ if ($nome === '' || $token === '') {
 // lê settings (mesma base do checkin.php)
 $sRes = $conn->query("SELECT * FROM settings WHERE id=1");
 if (!$sRes) {
-  log_event("RELOGIN_ERRO_SETTINGS_QUERY", ["mysql_error" => $conn->error]);
+  log_event("RELOGIN_ERRO_SETTINGS_QUERY");
   http_response_code(500);
   json_out(["ok"=>false, "msg"=>"Erro ao ler configurações"]);
 }
 $s = $sRes->fetch_assoc();
 if (!$s) {
-  log_event("RELOGIN_ERRO_SETTINGS_INVALIDO", ["settings" => $s]);
+  log_event("RELOGIN_ERRO_SETTINGS_INVALIDO");
   http_response_code(500);
   json_out(["ok"=>false, "msg"=>"Configurações inválidas"]);
 }
@@ -60,14 +60,14 @@ $stmt = $conn->prepare(
 );
 
 if (!$stmt) {
-  log_event("RELOGIN_ERRO_PREP", ["mysql_error" => $conn->error]);
+  log_event("RELOGIN_ERRO_PREP");
   http_response_code(500);
   json_out(["ok"=>false, "msg"=>"Erro interno (prep)"]);
 }
 
 $stmt->bind_param("s", $nome);
 if (!$stmt->execute()) {
-  log_event("RELOGIN_ERRO_EXEC", ["mysql_error" => $stmt->error]);
+  log_event("RELOGIN_ERRO_EXEC");
   http_response_code(500);
   json_out(["ok"=>false, "msg"=>"Erro interno (exec)"]);
 }
@@ -82,6 +82,6 @@ if (!$row) {
 }
 
 $pos = intval($row['ordem'] ?? 0);
-log_event("RELOGIN_OK", ["nome" => $row['nome'], "pos" => $pos]);
+log_event("RELOGIN_OK", ["pos" => $pos]);
 
 json_out(["ok"=>true, "nome"=>$row['nome'], "pos"=>$pos]);
