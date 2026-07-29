@@ -23,7 +23,10 @@ register_shutdown_function(function () {
   $err = error_get_last();
   if ($err) {
     include_once __DIR__ . "/../log.php";
-    log_event("DAVEZ_FATAL_SHUTDOWN", $err);
+    log_event("DAVEZ_FATAL_SHUTDOWN", [
+      "error_type" => $err["type"] ?? null,
+      "error_line" => $err["line"] ?? null,
+    ]);
   }
 });
 
@@ -135,7 +138,7 @@ function haversine_m($lat1, $lng1, $lat2, $lng2){
   return $R * $c;
 }
 
-log_event("DAVEZ_ENTRAR_START", ["post" => $_POST]);
+log_event("DAVEZ_ENTRAR_START");
 
 $nome     = trim($_POST['nome'] ?? '');
 $token    = trim($_POST['token'] ?? '');
@@ -171,11 +174,7 @@ if ($nome === '') {
   }
 
   if ($nome === '') {
-    log_event("DAVEZ_ERRO_NOME_VAZIO", [
-      "client_id" => $clientId,
-      "operational_start" => $opStartStr,
-      "operational_end" => $opEndStr
-    ]);
+    log_event("DAVEZ_ERRO_NOME_VAZIO");
     http_response_code(400);
     die("Informe seu nome");
   }
@@ -191,7 +190,7 @@ if ($token === '') {
 try {
   $s = ensure_token_cycle($conn);
 } catch (Exception $e) {
-  log_event("DAVEZ_ERRO_SETTINGS", ["err" => $e->getMessage()]);
+  log_event("DAVEZ_ERRO_SETTINGS");
   http_response_code(500);
   die("Erro ao ler settings");
 }
@@ -202,17 +201,14 @@ $latBase = floatval($s['lat_base'] ?? 0);
 $lngBase = floatval($s['lng_base'] ?? 0);
 
 if ($tokenAtual === '' || $token !== $tokenAtual) {
-  log_event("DAVEZ_ERRO_TOKEN_INVALIDO", [
-    "token_recebido" => $token,
-    "token_esperado" => $tokenAtual
-  ]);
+  log_event("DAVEZ_ERRO_TOKEN_INVALIDO");
   http_response_code(401);
   die("Token inválido");
 }
 
 // valida latitude/longitude
 if (!$lat || !$lng) {
-  log_event("DAVEZ_ERRO_COORDS", ["lat" => $lat, "lng" => $lng]);
+  log_event("DAVEZ_ERRO_COORDS");
   http_response_code(400);
   die("Localização inválida");
 }
@@ -220,9 +216,9 @@ if (!$lat || !$lng) {
 // valida cid
 if (!preg_match('/^[a-f0-9]{32}$/', $clientId)) {
   $clientId = md5(uniqid('', true));
-  log_event("DAVEZ_CID_GERADO", ["client_id" => $clientId]);
+  log_event("DAVEZ_CID_GERADO");
 } else {
-  log_event("DAVEZ_CID_OK", ["client_id" => $clientId]);
+  log_event("DAVEZ_CID_OK");
 }
 
 setcookie('cid', $clientId, [
@@ -278,7 +274,7 @@ $checkNome = $conn->prepare("
 ");
 
 if (!$checkNome) {
-  log_event("DAVEZ_ERRO_PREP_DUP_NOME", ["err" => $conn->error]);
+  log_event("DAVEZ_ERRO_PREP_DUP_NOME");
   http_response_code(500);
   die("Erro interno (validação nome)");
 }
@@ -322,7 +318,7 @@ $stmt = $conn->prepare("
 ");
 
 if (!$stmt) {
-  log_event("DAVEZ_ERRO_PREPARE", ["err" => $conn->error]);
+  log_event("DAVEZ_ERRO_PREPARE");
   http_response_code(500);
   die("Erro interno");
 }
@@ -331,7 +327,7 @@ $stmt->bind_param("sssi", $dia, $clientId, $nome, $nextOrdem);
 $stmt->execute();
 
 if ($stmt->affected_rows <= 0) {
-  log_event("DAVEZ_ERRO_INSERT", ["err" => $stmt->error]);
+  log_event("DAVEZ_ERRO_INSERT");
   http_response_code(500);
   die("Não foi possível entrar na fila");
 }
@@ -339,12 +335,7 @@ if ($stmt->affected_rows <= 0) {
 $stmt->close();
 
 log_event("DAVEZ_OK", [
-  "client_id" => $clientId,
-  "dia" => $dia,
-  "nome" => $nome,
-  "ordem" => $nextOrdem,
-  "operational_start" => $opStartStr,
-  "operational_end" => $opEndStr
+  "ordem" => $nextOrdem
 ]);
 
 echo "Ok, você entrou na fila da vez.";

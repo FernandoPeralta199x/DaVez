@@ -27,11 +27,14 @@ register_shutdown_function(function () {
   $err = error_get_last();
   if ($err) {
     include_once __DIR__ . "/log.php";
-    log_event("FATAL_SHUTDOWN", $err);
+    log_event("FATAL_SHUTDOWN", [
+      "error_type" => $err["type"] ?? null,
+      "error_line" => $err["line"] ?? null,
+    ]);
   }
 });
 
-log_event("CHECKIN_START", ["post" => $_POST]);
+log_event("CHECKIN_START");
 
 $nome     = trim($_POST['nome'] ?? '');
 $token    = trim($_POST['token'] ?? '');
@@ -47,14 +50,14 @@ if ($nome === '') {
 
 $sRes = $conn->query("SELECT * FROM settings WHERE id=1");
 if (!$sRes) {
-  log_event("ERRO_SETTINGS_QUERY", ["mysql_error" => $conn->error]);
+  log_event("ERRO_SETTINGS_QUERY");
   http_response_code(500);
   die("Erro ao ler configurações");
 }
 
 $s = $sRes->fetch_assoc();
 if (!$s || !isset($s['chamada_aberta'])) {
-  log_event("ERRO_SETTINGS_INVALIDO", ["settings" => $s]);
+  log_event("ERRO_SETTINGS_INVALIDO");
   http_response_code(500);
   die("Configurações inválidas");
 }
@@ -77,7 +80,7 @@ if ($token === '') {
 }
 
 if ($token !== $s['token']) {
-  log_event("ERRO_TOKEN_INVALIDO", ["enviado" => $token, "esperado" => $s['token']]);
+  log_event("ERRO_TOKEN_INVALIDO");
   http_response_code(403);
   die("Token inválido");
 }
@@ -86,9 +89,9 @@ log_event("TOKEN_OK");
 
 if (!preg_match('/^[a-f0-9]{32}$/', $clientId)) {
   $clientId = md5(uniqid('', true));
-  log_event("CID_GERADO", ["client_id" => $clientId]);
+  log_event("CID_GERADO");
 } else {
-  log_event("CID_OK", ["client_id" => $clientId]);
+  log_event("CID_OK");
 }
 
 setcookie('cid', $clientId, [
@@ -100,7 +103,7 @@ setcookie('cid', $clientId, [
 ]);
 
 if ($lat == 0 || $lng == 0) {
-  log_event("ERRO_LOCALIZACAO_ZERO", ["lat" => $lat, "lng" => $lng]);
+  log_event("ERRO_LOCALIZACAO_ZERO");
   http_response_code(400);
   die("Ative a localização e tente novamente");
 }
@@ -115,10 +118,6 @@ $dist = sqrt(
 ) * 111000;
 
 log_event("DIST_OK", [
-  "lat" => $lat,
-  "lng" => $lng,
-  "lat_base" => $latBase,
-  "lng_base" => $lngBase,
   "distancia_m" => $dist,
   "raio_m" => $raio
 ]);
@@ -139,21 +138,21 @@ $ver = $conn->prepare(
 );
 
 if (!$ver) {
-  log_event("ERRO_PREP_DUPLICIDADE", ["mysql_error" => $conn->error]);
+  log_event("ERRO_PREP_DUPLICIDADE");
   http_response_code(500);
   die("Erro interno (validação)");
 }
 
 $ver->bind_param("s", $clientId);
 if (!$ver->execute()) {
-  log_event("ERRO_EXEC_DUPLICIDADE", ["mysql_error" => $ver->error]);
+  log_event("ERRO_EXEC_DUPLICIDADE");
   http_response_code(500);
   die("Erro interno (validação)");
 }
 $ver->store_result();
 
 if ($ver->num_rows > 0) {
-  log_event("ERRO_DUPLICADO", ["client_id" => $clientId]);
+  log_event("ERRO_DUPLICADO");
   http_response_code(409);
   die("Check-in já realizado hoje");
 }
@@ -167,7 +166,7 @@ $verNome = $conn->prepare(
 );
 
 if (!$verNome) {
-  log_event("ERRO_PREP_DUP_NOME", ["mysql_error" => $conn->error]);
+  log_event("ERRO_PREP_DUP_NOME");
   http_response_code(500);
   die("Erro interno (validação nome)");
 }
@@ -175,7 +174,7 @@ if (!$verNome) {
 $verNome->bind_param("s", $nome);
 
 if (!$verNome->execute()) {
-  log_event("ERRO_EXEC_DUP_NOME", ["mysql_error" => $verNome->error]);
+  log_event("ERRO_EXEC_DUP_NOME");
   http_response_code(500);
   die("Erro interno (validação nome)");
 }
@@ -185,7 +184,7 @@ $ja = $resNome ? $resNome->fetch_assoc() : null;
 $verNome->close();
 
 if ($ja) {
-  log_event("ERRO_DUPLICADO_NOME", ["nome" => $nome, "ordem" => $ja['ordem'] ?? null]);
+  log_event("ERRO_DUPLICADO_NOME", ["ordem" => $ja['ordem'] ?? null]);
   http_response_code(409);
   die("Este nome já realizou check-in hoje. Se for você, use o re-login com o mesmo nome e token.");
 }
@@ -210,7 +209,7 @@ $gotLock = 0;
 try {
   // começa transação
   if (!$conn->begin_transaction()) {
-    log_event("ERRO_BEGIN_TX", ["mysql_error" => $conn->error]);
+    log_event("ERRO_BEGIN_TX");
     throw new Exception("Erro interno (transação)");
   }
 
@@ -228,9 +227,9 @@ try {
 
   if ($gotLock !== 1) {
     // fallback: segue sem lock (ainda funciona; risco mínimo de colisão em pico)
-    log_event("ORDEM_LOCK_FALHOU", ["lock" => $lockName, "got" => $gotLock]);
+    log_event("ORDEM_LOCK_FALHOU", ["got" => $gotLock]);
   } else {
-    log_event("ORDEM_LOCK_OK", ["lock" => $lockName]);
+    log_event("ORDEM_LOCK_OK", ["got" => $gotLock]);
   }
 
   // pega a próxima ordem do dia (se não existir, começa em 1)
@@ -245,7 +244,7 @@ try {
     $mx = intval(($q->fetch_assoc()['mx'] ?? 0));
     $next = $mx + 1;
   } else {
-    log_event("ERRO_MAX_ORDEM_QUERY", ["mysql_error" => $conn->error]);
+    log_event("ERRO_MAX_ORDEM_QUERY");
     // mantém $next=1 como fallback
   }
 
@@ -255,14 +254,14 @@ try {
   );
 
   if (!$stmt) {
-    log_event("ERRO_PREP_INSERT", ["mysql_error" => $conn->error]);
+    log_event("ERRO_PREP_INSERT");
     throw new Exception("Erro interno (inserção)");
   }
 
   $stmt->bind_param("ssssi", $nome, $clientId, $ip, $ua, $next);
 
   if (!$stmt->execute()) {
-    log_event("ERRO_EXEC_INSERT", ["mysql_error" => $stmt->error]);
+    log_event("ERRO_EXEC_INSERT");
     $stmt->close();
     throw new Exception("Erro ao registrar check-in");
   }
@@ -280,7 +279,7 @@ try {
 
   // commit
   if (!$conn->commit()) {
-    log_event("ERRO_COMMIT_TX", ["mysql_error" => $conn->error]);
+    log_event("ERRO_COMMIT_TX");
     throw new Exception("Erro interno (commit)");
   }
 
@@ -303,11 +302,11 @@ try {
     }
   }
 
-  log_event("ERRO_TX_ORDEM_INSERT", ["msg" => $e->getMessage()]);
+  log_event("ERRO_TX_ORDEM_INSERT");
   http_response_code(500);
   die($e->getMessage());
 }
 
-log_event("CHECKIN_OK", ["nome" => $nome, "client_id" => $clientId, "ordem" => $next]);
+log_event("CHECKIN_OK", ["ordem" => $next]);
 
 echo "Check-in confirmado com sucesso! Sua posição na lista: " . intval($next) . "º";

@@ -13,3 +13,21 @@ Prioridades para a futura suíte:
 5. rotação e expiração de sessão;
 6. limpeza do ciclo e geração de relatórios;
 7. sanitização de logs e erros públicos.
+
+## Testes disponíveis
+
+### Política estática de logging
+
+```powershell
+node tests/security/logging_policy.test.js
+```
+
+Verifica que os endpoints não enviam POST bruto, tokens, nomes, coordenadas, identificadores ou erros de banco para o logger.
+
+### Integração do logger
+
+```powershell
+php tests/security/log_event_test.php
+```
+
+Grava um evento em arquivo temporário pela implementação real de `log_event` e confirma que dados sensíveis são descartados enquanto métricas operacionais permitidas permanecem.
