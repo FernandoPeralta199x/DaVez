@@ -1,92 +1,191 @@
 <?php
-session_start();
+require_once __DIR__ . '/../src/Security/Bootstrap.php';
+require_once __DIR__ . '/../src/Domain/OperationalCycle.php';
+require_once __DIR__ . '/../src/Domain/OperationalContext.php';
+require_once __DIR__ . '/../src/Domain/QueueStateChanged.php';
+require_once __DIR__ . '/../src/Domain/QueueReorder.php';
+require_once __DIR__ . '/../src/Database/bootstrap.php';
+davez_install_safe_exception_handler();
+davez_require_http_method('POST');
+davez_require_admin();
+davez_require_csrf();
+
+try {
+  $reorderRate = davez_rate_limit_consume(
+    'admin-queue-reorder',
+    davez_rate_limit_request_subject(),
+    30,
+    60
+  );
+} catch (RuntimeException $exception) {
+  davez_send_error(
+    'security_control_unavailable',
+    'Controle de segurança temporariamente indisponível.',
+    503
+  );
+}
+
+if (!$reorderRate['allowed']) {
+  header('Retry-After: ' . $reorderRate['retry_after']);
+  davez_send_error(
+    'rate_limit_exceeded',
+    'Muitas alterações. Aguarde e tente novamente.',
+    429
+  );
+}
+
 include_once __DIR__ . "/../config.php";
 
-require_admin();
-
-header('Content-Type: application/json; charset=utf-8');
-
 date_default_timezone_set('America/Sao_Paulo');
+$operationalContext = new \DaVez\Domain\OperationalContext(
+  new \DaVez\Domain\OperationalCycle()
+);
 
 function json_out($data, $code = 200){
-  http_response_code($code);
-  echo json_encode($data, JSON_UNESCAPED_UNICODE);
-  exit;
+  davez_send_json($data, $code);
 }
 
-function get_operational_date(?DateTime $ref = null){
-  $tz = new DateTimeZone('America/Sao_Paulo');
-  $now = $ref ? clone $ref : new DateTime('now', $tz);
-
-  $start = clone $now;
-  $start->setTime(6, 0, 0);
-
-  if ((int)$now->format('H') < 6) {
-    $start->modify('-1 day');
-  }
-
-  return $start->format('Y-m-d');
-}
-
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-  json_out(['ok' => false, 'err' => 'Método inválido'], 405);
-}
-
-$raw = file_get_contents("php://input");
-$data = json_decode($raw, true);
-
-if (!is_array($data)) {
+try {
+  $data = davez_read_json_body(16384);
+  davez_assert_allowed_input_keys($data, ['ordem', '_csrf']);
+  davez_assert_no_untrusted_identity($data);
+} catch (InvalidArgumentException $exception) {
   json_out(['ok' => false, 'err' => 'Payload inválido'], 400);
 }
 
-$ordem = $data['ordem'] ?? null;
-if (!is_array($ordem) || empty($ordem)) {
+try {
+  $ordemValidada = \DaVez\Domain\QueueReorder::normalize(
+    $data['ordem'] ?? null,
+    500
+  );
+} catch (InvalidArgumentException $exception) {
   json_out(['ok' => false, 'err' => 'Lista de ordem inválida'], 400);
 }
 
-$tb = $conn->query("SHOW TABLES LIKE 'fila_da_vez'");
-if (!$tb || $tb->num_rows === 0) {
-  json_out(['ok' => false, 'err' => 'Tabela fila_da_vez não existe. Rode o SQL de instalação.'], 500);
-}
-
-$dia = get_operational_date();
-
-$conn->begin_transaction();
+$dia = $operationalContext->date();
+$lockedTransactions = davez_locked_transaction_runner($conn);
 
 try {
-  $stmt = $conn->prepare("
-    UPDATE fila_da_vez
-    SET ordem=?
-    WHERE id=?
-      AND dia=?
-      AND status='na_fila'
-  ");
+  $lockedTransactions->run(
+    'fila_da_vez:' . $dia,
+    static function () use ($conn, $dia, $ordemValidada): void {
+      $current = $conn->prepare(
+        "SELECT id
+         FROM fila_da_vez
+         WHERE dia=?
+           AND status='na_fila'
+         ORDER BY id
+         FOR UPDATE"
+      );
 
-  if (!$stmt) {
-    throw new Exception("Prepare falhou: " . $conn->error);
-  }
+      if (!$current) {
+        throw new RuntimeException('Fila indisponível para leitura.');
+      }
 
-  $pos = 1;
-  foreach ($ordem as $id) {
-    $id = intval($id);
-    if ($id <= 0) continue;
+      $current->bind_param("s", $dia);
 
-    $stmt->bind_param("iis", $pos, $id, $dia);
-    $stmt->execute();
-    $pos++;
-  }
+      if (!$current->execute()) {
+        $current->close();
+        throw new RuntimeException('Fila indisponível para leitura.');
+      }
 
-  $conn->commit();
+      $currentResult = $current->get_result();
+      $currentIds = [];
+
+      while ($row = $currentResult->fetch_assoc()) {
+        $currentIds[] = (int) $row['id'];
+      }
+      $current->close();
+
+      \DaVez\Domain\QueueReorder::assertExactSet(
+        $ordemValidada,
+        $currentIds
+      );
+
+      $update = $conn->prepare(
+        "UPDATE fila_da_vez
+         SET ordem=?
+         WHERE id=?
+           AND dia=?
+           AND status='na_fila'"
+      );
+
+      if (!$update) {
+        throw new RuntimeException('Fila indisponível para atualização.');
+      }
+
+      foreach (
+        \DaVez\Domain\QueueReorder::positions($ordemValidada)
+        as $id => $position
+      ) {
+        $update->bind_param("iis", $position, $id, $dia);
+
+        if (!$update->execute()) {
+          $update->close();
+          throw new RuntimeException('Falha ao atualizar a fila.');
+        }
+      }
+      $update->close();
+
+      $verify = $conn->prepare(
+        "SELECT id, ordem
+         FROM fila_da_vez
+         WHERE dia=?
+           AND status='na_fila'
+         ORDER BY ordem ASC, id ASC
+         FOR UPDATE"
+      );
+
+      if (!$verify) {
+        throw new RuntimeException('Fila indisponível para verificação.');
+      }
+
+      $verify->bind_param("s", $dia);
+
+      if (!$verify->execute()) {
+        $verify->close();
+        throw new RuntimeException('Fila indisponível para verificação.');
+      }
+
+      $verifiedResult = $verify->get_result();
+      $verifiedIds = [];
+      $expectedPosition = 1;
+
+      while ($row = $verifiedResult->fetch_assoc()) {
+        if ((int) $row['ordem'] !== $expectedPosition) {
+          $verify->close();
+          throw new RuntimeException('A sequência final da fila é inválida.');
+        }
+
+        $verifiedIds[] = (int) $row['id'];
+        $expectedPosition++;
+      }
+      $verify->close();
+
+      if ($verifiedIds !== $ordemValidada) {
+        throw new RuntimeException('A ordem final diverge da solicitação.');
+      }
+    }
+  );
+
   json_out([
     'ok' => true,
     'dia' => $dia
   ]);
-
-} catch (Exception $e) {
-  $conn->rollback();
+} catch (\DaVez\Domain\QueueStateChanged $exception) {
   json_out([
     'ok' => false,
-    'err' => 'Falha ao atualizar ordem da fila',
-    'debug' => $e->getMessage()
+    'err' => 'A fila mudou. Atualize a página e tente novamente.'
+  ], 409);
+} catch (\DaVez\Database\LockUnavailable $exception) {
+  header('Retry-After: 2');
+  json_out([
+    'ok' => false,
+    'err' => 'Fila ocupada. Aguarde e tente novamente.'
+  ], 503);
+} catch (Throwable $exception) {
+  json_out([
+    'ok' => false,
+    'err' => 'Falha ao atualizar ordem da fila'
   ], 500);
 }

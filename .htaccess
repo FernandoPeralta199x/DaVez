@@ -1,0 +1,28 @@
+<IfModule mod_autoindex.c>
+  IndexIgnore *
+</IfModule>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(self)"
+  Header always set Cross-Origin-Opener-Policy "same-origin"
+</IfModule>
+
+<IfModule mod_alias.c>
+  RedirectMatch 403 ^/(?:\.git|\.github|\.private|artifacts|database|docs|logs|reports|scripts|src|tests)(?:/|$)
+</IfModule>
+
+<IfModule mod_authz_core.c>
+  <FilesMatch "(?:^\.(?:editorconfig|env(?:\..*)?|gitattributes|gitignore)$|^config(?:\.example)?\.php$|\.(?:bak|dump|log|md|ps1|sql|sql\.gz|yml|yaml)$)">
+    Require all denied
+  </FilesMatch>
+</IfModule>
+
+<IfModule !mod_authz_core.c>
+  <FilesMatch "(?:^\.(?:editorconfig|env(?:\..*)?|gitattributes|gitignore)$|^config(?:\.example)?\.php$|\.(?:bak|dump|log|md|ps1|sql|sql\.gz|yml|yaml)$)">
+    Order allow,deny
+    Deny from all
+  </FilesMatch>
+</IfModule>
