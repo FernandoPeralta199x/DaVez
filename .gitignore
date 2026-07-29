@@ -1,0 +1,37 @@
+# Configuração local e segredos
+/config.php
+/.env
+/.env.*
+!/.env.example
+/*.local.php
+
+# Artefatos privados desta cópia de trabalho
+/.private/
+/CLAUDE_DAVEZ_AUDITORIA_E_PLANO_CORRECAO-1.md
+
+# Dados gerados em runtime
+/logs/*
+!/logs/.gitkeep
+/reports/*
+!/reports/.gitkeep
+*.log
+
+# Dumps, backups e exportações
+*.bak
+*.dump
+*.sql.gz
+*.zip
+
+# Dependências e resultados de ferramentas
+/vendor/
+/node_modules/
+/coverage/
+/.phpunit.cache/
+/.phpunit.result.cache
+
+# IDE e sistema operacional
+/.idea/
+/.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini

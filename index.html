@@ -1,0 +1,1661 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<title>Chamada Motoboys</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<!-- ===== PWA ===== -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1e88e5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Motoboys">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+
+<style>
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; }
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f2f2f2;
+  color: #111;
+}
+
+.container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.logo-top{
+  text-align:center;
+  margin-bottom:15px;
+}
+
+.logo-top img{
+  max-width:150px;
+  height:auto;
+}
+
+.card {
+  background: #fff;
+  width: 100%;
+  max-width: 420px;
+  padding: 24px;
+  border-radius: 14px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+}
+
+h2 { text-align: center; margin: 0 0 18px; }
+
+input {
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  border: 1px solid #ccc;
+  font-size: 16px;
+  outline: none;
+}
+
+input:focus {
+  border-color: #1e88e5;
+  box-shadow: 0 0 0 3px rgba(30,136,229,0.15);
+}
+
+button {
+  width: 100%;
+  padding: 14px;
+  background: #1e88e5;
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:disabled { opacity: 0.7; cursor: not-allowed; }
+
+.status {
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: #333;
+  background: #f7f7f7;
+  border: 1px solid #e6e6e6;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: none;
+}
+.status.show { display: block; }
+
+.small {
+  font-size: 12px;
+  color: #666;
+  margin-top: 10px;
+  text-align: center;
+}
+
+.pwa-box{
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f7fbff;
+  border: 1px solid #d7e9fb;
+  display: none;
+}
+.pwa-box.show{ display:block; }
+
+.pwa-title{
+  font-size: 13px;
+  font-weight: 800;
+  color: #1e88e5;
+  margin-bottom: 6px;
+}
+
+.pwa-text{
+  font-size: 12px;
+  color: #355;
+  line-height: 1.4;
+}
+
+.pwa-btn{
+  margin-top: 10px;
+  width: 100%;
+  padding: 12px;
+  background: #111;
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pwa-btn.ios {
+  background: #2e7d32;
+}
+
+/* ===== Modal ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 9999;
+}
+.modal-overlay.show { display: flex; }
+
+.modal {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 16px 16px 10px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  flex: 0 0 auto;
+}
+
+.badge.ok { background: rgba(46,125,50,0.12); color: #2e7d32; }
+.badge.err { background: rgba(198,40,40,0.12); color: #c62828; }
+.badge.warn { background: rgba(239,108,0,0.12); color: #ef6c00; }
+.badge.info { background: rgba(30,136,229,0.12); color: #1e88e5; }
+
+.modal-title { font-size: 16px; font-weight: 800; margin: 0; }
+.modal-body {
+  padding: 0 16px 12px;
+  color: #333;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.pos-card{
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid #e6eefc;
+  background: linear-gradient(180deg, rgba(30,136,229,0.08), rgba(30,136,229,0.03));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pos-icon{
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  background: rgba(30,136,229,0.14);
+  color: #1e88e5;
+  flex: 0 0 auto;
+}
+.pos-meta{ min-width: 0; }
+.pos-label{
+  font-size: 12px;
+  color: #355;
+  font-weight: 900;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  opacity: .9;
+}
+.pos-number{
+  margin-top: 3px;
+  font-size: 34px;
+  font-weight: 900;
+  color: #1e88e5;
+  line-height: 1.05;
+}
+.pos-sub{
+  margin-top: 4px;
+  font-size: 13px;
+  color: #333;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  justify-content: flex-end;
+  background: #fafafa;
+  border-top: 1px solid #eee;
+}
+
+.btn {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: none;
+  font-weight: 800;
+  cursor: pointer;
+}
+.btn.primary { background: #1e88e5; color: #fff; }
+.btn.ghost { background: #eee; color: #111; }
+
+/* ===== Tela pós check-in ===== */
+.wait-box { display: none; text-align: center; }
+.wait-box.show { display: block; }
+
+.wait-header{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  margin-bottom: 10px;
+}
+
+.wait-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  background: rgba(30,136,229,0.12);
+  color: #1e88e5;
+  flex: 0 0 auto;
+}
+
+.wait-headtext{ flex: 1; min-width: 0; }
+
+.wait-title{
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 900;
+}
+.wait-text{
+  margin: 0;
+  color: #333;
+  line-height: 1.45;
+  font-size: 14px;
+}
+
+.mini-link {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #666;
+}
+
+.wait-note{
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(30,136,229,0.08);
+  border: 1px solid rgba(30,136,229,0.18);
+  color: #24425a;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.wait-pos{
+  margin: 10px auto 0;
+  max-width: 320px;
+  border-radius: 14px;
+  border: 1px solid #e6eefc;
+  background: rgba(30,136,229,0.06);
+  padding: 12px;
+  display: none;
+  text-align: left;
+}
+.wait-pos.show{ display:block; }
+.wait-pos .lbl{ font-size: 12px; font-weight: 900; opacity: .85; text-transform: uppercase; letter-spacing: .3px; color:#355; }
+.wait-pos .num{ margin-top: 4px; font-size: 34px; font-weight: 900; color:#1e88e5; line-height: 1; }
+
+.btn-success{
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  background: #2e7d32;
+  color: #fff;
+  margin-top: 10px;
+}
+.btn-success:disabled{ opacity: .7; cursor: not-allowed; }
+
+.davez-box{
+  margin: 12px auto 0;
+  max-width: 320px;
+  border-radius: 14px;
+  border: 1px solid rgba(46,125,50,0.25);
+  background: linear-gradient(180deg, rgba(46,125,50,0.10), rgba(46,125,50,0.04));
+  padding: 12px;
+  display: none;
+  text-align: left;
+}
+.davez-box.show{ display:block; }
+
+.davez-top{
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.davez-icon{
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(46,125,50,0.14);
+  color: #2e7d32;
+  font-size: 20px;
+  flex: 0 0 auto;
+}
+.davez-title{
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  color: #1f4d23;
+  opacity: .95;
+}
+.davez-desc{
+  margin-top: 3px;
+  font-size: 12px;
+  color: #333;
+  line-height: 1.35;
+  opacity: .85;
+}
+
+.davez-grid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.davez-col{
+  background: rgba(255,255,255,0.78);
+  border: 1px solid rgba(46,125,50,0.18);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.davez-lbl{
+  font-size: 11px;
+  font-weight: 900;
+  opacity: .85;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  color: #1f4d23;
+}
+
+.davez-num{
+  margin-top: 6px;
+  font-size: 28px;
+  font-weight: 900;
+  color: #2e7d32;
+  line-height: 1;
+}
+
+.davez-after{
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 900;
+  color: #111;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.davez-state{
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px dashed rgba(46,125,50,0.35);
+  background: rgba(46,125,50,0.06);
+  font-size: 13px;
+  font-weight: 900;
+  color: #1f4d23;
+}
+
+.davez-box.despachado{
+  border-color: rgba(30,136,229,0.25);
+  background: linear-gradient(180deg, rgba(30,136,229,0.10), rgba(30,136,229,0.04));
+}
+.davez-box.despachado .davez-icon{
+  background: rgba(30,136,229,0.14);
+  color: #1e88e5;
+}
+.davez-box.despachado .davez-title,
+.davez-box.despachado .davez-lbl{
+  color: #1e88e5;
+}
+.davez-box.despachado .davez-num{
+  color: #1e88e5;
+}
+.davez-box.despachado .davez-state{
+  border-color: rgba(30,136,229,0.35);
+  background: rgba(30,136,229,0.06);
+  color: #1e88e5;
+}
+
+/* ===== Botão flutuante atualizar ===== */
+.fab-refresh{
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9998;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+
+  width: auto;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 999px;
+
+  background: rgba(17, 17, 17, 0.92);
+  color: #fff;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.22);
+  backdrop-filter: blur(6px);
+
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+
+  transition: transform .18s ease, opacity .18s ease, box-shadow .18s ease, background .18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fab-refresh:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 14px 34px rgba(0,0,0,0.26);
+  background: rgba(17, 17, 17, 0.98);
+}
+
+.fab-refresh:active{
+  transform: translateY(0);
+}
+
+.fab-refresh:disabled{
+  opacity: .72;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.fab-refresh-icon{
+  width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.12);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.fab-refresh-text{
+  white-space: nowrap;
+}
+
+@media (max-width: 520px){
+  .fab-refresh{
+    right: 14px;
+    bottom: 14px;
+    padding: 12px 13px;
+  }
+
+  .fab-refresh-text{
+    font-size: 13px;
+  }
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+  <div class="card">
+
+      <div class="logo-top">
+  <img src="img/logo.png" alt="Davez">
+</div>
+
+    <div id="formBox">
+      <h2>Chamada de Motoboys</h2>
+
+      <input id="nome" placeholder="Seu nome" autocomplete="name" />
+      <input id="token" placeholder="Token do dia" inputmode="text" autocomplete="one-time-code" />
+
+      <button id="btn" onclick="checkin()">Fazer Check-In</button>
+
+      <div id="status" class="status"></div>
+      <div class="small">Mantenha o GPS ligado. A localização usa alta precisão.</div>
+
+      <!-- ===== PWA UI ===== -->
+      <div id="pwaBox" class="pwa-box">
+        <div class="pwa-title">Instalar aplicativo</div>
+        <div id="pwaText" class="pwa-text">Você pode instalar este sistema na tela inicial do celular para abrir como app.</div>
+        <button id="btnInstalarApp" class="pwa-btn" type="button" style="display:none;">Instalar aplicativo</button>
+        <button id="btnInstalarIOS" class="pwa-btn ios" type="button" style="display:none;">Ver como instalar no iPhone</button>
+      </div>
+    </div>
+
+    <div id="waitBox" class="wait-box">
+      <div class="wait-header">
+        <div class="wait-icon">⏳</div>
+        <div class="wait-headtext">
+          <p class="wait-title">Check-in realizado</p>
+          <p class="wait-text" id="waitText">Seu check-in foi registrado. Agora é só aguardar sua vez.</p>
+        </div>
+      </div>
+
+      <div id="waitPos" class="wait-pos">
+        <div class="lbl">Sua posição na lista (fechamento)</div>
+        <div class="num" id="waitPosNum">--</div>
+      </div>
+
+      <div id="davezBox" class="davez-box">
+        <div class="davez-top">
+          <div class="davez-icon">🟢</div>
+          <div>
+            <div class="davez-title">Fila DA VEZ (estou na loja)</div>
+            <div class="davez-desc">Essa fila é diferente da lista de fechamento. Só vale quando você está na loja.</div>
+          </div>
+        </div>
+
+        <div class="davez-grid">
+          <div class="davez-col">
+            <div class="davez-lbl">Sua posição na DA VEZ</div>
+            <div class="davez-num" id="davezPosNum">--</div>
+          </div>
+          <div class="davez-col">
+            <div class="davez-lbl">Você entrou depois de</div>
+            <div class="davez-after" id="davezAfter">--</div>
+          </div>
+        </div>
+
+        <div class="davez-state" id="davezState">Status: aguardando</div>
+      </div>
+
+      <div class="wait-note" id="waitReminder">
+        Quando voltar de uma entrega, não esqueça de clicar em <b>Estou na loja</b> para entrar na fila da vez novamente.
+      </div>
+
+      <button id="btnDaVez2" class="btn-success" onclick="entrarDaVez(true)">Estou na loja</button>
+
+      <div class="mini-link">Se estiver testando e precisa tentar de novo, peça para o admin limpar a lista do ciclo atual.</div>
+    </div>
+
+  </div>
+</div>
+
+<div id="modalOverlay" class="modal-overlay" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="modal-header">
+      <div id="modalBadge" class="badge info">i</div>
+      <div><p id="modalTitle" class="modal-title">Mensagem</p></div>
+    </div>
+    <div id="modalBody" class="modal-body"></div>
+    <div id="modalActions" class="modal-actions"></div>
+  </div>
+</div>
+
+<button id="btnRefreshFloat" class="fab-refresh" type="button" onclick="atualizarSistema()" aria-label="Atualizar sistema" title="Atualizar sistema">
+  <span class="fab-refresh-icon">↻</span>
+  <span class="fab-refresh-text">Atualizar</span>
+</button>
+
+<script>
+console.log("SCRIPT OK");
+
+/* ===== Config ===== */
+const CHECKIN_URL = "checkin.php?v=3";
+const DAVEZ_ENTER_URL = "DaVez/entrar.php?v=1";
+const DAVEZ_LIST_URL = "DaVez/listar.php?v=1";
+const RELOGIN_URL = "relogin.php?v=1";
+const SESSION_INFO_URL = "session_info.php?v=1";
+
+/* ===== Helpers ===== */
+function operationalDayKey() {
+  const d = new Date();
+  const ref = new Date(d);
+
+  if (ref.getHours() < 6) {
+    ref.setDate(ref.getDate() - 1);
+  }
+
+  return `${ref.getFullYear()}-${String(ref.getMonth()+1).padStart(2,'0')}-${String(ref.getDate()).padStart(2,'0')}`;
+}
+
+function setStatus(msg) {
+  const el = document.getElementById("status");
+  el.textContent = msg;
+  el.classList.add("show");
+}
+function clearStatus() {
+  const el = document.getElementById("status");
+  el.textContent = "";
+  el.classList.remove("show");
+}
+
+function getClientId() {
+  let cid = localStorage.getItem("cid");
+  if (!cid || !/^[a-f0-9]{32}$/.test(cid)) {
+    const arr = new Uint8Array(16);
+    crypto.getRandomValues(arr);
+    cid = Array.from(arr).map(b => b.toString(16).padStart(2, "0")).join("");
+    localStorage.setItem("cid", cid);
+  }
+  return cid;
+}
+
+/* ===== Nome fallback ===== */
+function getSavedNameFallback(){
+  const n1 = (localStorage.getItem("motoboy_nome") || "").trim();
+  if (n1) return n1;
+
+  const n2 = (localStorage.getItem("checked_in_name") || "").trim();
+  if (n2) return n2;
+
+  return "";
+}
+
+function saveNameEverywhere(nome){
+  try{
+    if (!nome) return;
+    localStorage.setItem("motoboy_nome", nome);
+    localStorage.setItem("checked_in_name", nome);
+  }catch(e){}
+}
+
+/* ===== Login temporário ===== */
+function getSavedAuth(){
+  return {
+    nome: (localStorage.getItem("motoboy_nome") || "").trim(),
+    token: (localStorage.getItem("motoboy_token") || "").trim(),
+  };
+}
+
+function saveAuth(nome, token){
+  try{
+    if (nome) saveNameEverywhere(nome);
+    if (token) localStorage.setItem("motoboy_token", token);
+    localStorage.setItem("motoboy_auth_day", operationalDayKey());
+  }catch(e){}
+}
+
+function autofillAuthInputs(){
+  const { nome, token } = getSavedAuth();
+  const nomeEl = document.getElementById("nome");
+  const tokenEl = document.getElementById("token");
+  const fallbackNome = getSavedNameFallback();
+
+  if (nomeEl && !String(nomeEl.value||"").trim() && (nome || fallbackNome)) {
+    nomeEl.value = nome || fallbackNome;
+  }
+  if (tokenEl && !String(tokenEl.value||"").trim() && token) {
+    tokenEl.value = token;
+  }
+}
+autofillAuthInputs();
+
+function getSavedAuthLoose(){
+  return {
+    nome: (localStorage.getItem("motoboy_nome") || getSavedNameFallback() || "").trim(),
+    token: (localStorage.getItem("motoboy_token") || "").trim()
+  };
+}
+
+/* ===== Reset seletivo quando token muda ===== */
+function clearTokenDependentCacheOnCycleChange(){
+  try{
+    // NÃO remover token
+    // localStorage.removeItem("motoboy_token");
+
+    localStorage.removeItem("checked_in_active");
+    localStorage.removeItem("checked_in_name");
+    localStorage.removeItem("checked_in_pos");
+
+    localStorage.removeItem("davez_status");
+    localStorage.removeItem("davez_active");
+    localStorage.removeItem("davez_pos");
+    localStorage.removeItem("davez_after");
+    localStorage.removeItem("davez_day");
+  }catch(e){}
+}
+
+async function syncTokenCycleCache(){
+  try{
+    const r = await fetch(SESSION_INFO_URL, { cache: "no-store" });
+    const data = await r.json().catch(()=>null);
+
+    if (!data || !data.ok) return;
+
+    const currentCycle = String(data.token_cycle_start || "").trim();
+    if (!currentCycle) return;
+
+    const savedCycle = String(localStorage.getItem("last_token_cycle_start") || "").trim();
+
+    if (savedCycle && savedCycle !== currentCycle) {
+      clearTokenDependentCacheOnCycleChange();
+    }
+
+    localStorage.setItem("last_token_cycle_start", currentCycle);
+  } catch(e){}
+}
+
+/* ===== Modal ===== */
+function showModal({ type="info", title="Mensagem", message="", position=null, actions=[{label:"OK"}] }) {
+  const overlay = document.getElementById("modalOverlay");
+  const badge = document.getElementById("modalBadge");
+  const t = document.getElementById("modalTitle");
+  const body = document.getElementById("modalBody");
+  const act = document.getElementById("modalActions");
+
+  badge.className = "badge " + (type === "ok" ? "ok" : type === "err" ? "err" : type === "warn" ? "warn" : "info");
+  badge.textContent = type === "ok" ? "✓" : type === "err" ? "!" : type === "warn" ? "!" : "i";
+  t.textContent = title;
+
+  body.innerHTML = "";
+  const p = document.createElement("div");
+  p.style.whiteSpace = "pre-line";
+  p.textContent = message || "";
+  body.appendChild(p);
+
+  if (typeof position === "number" && position > 0) {
+    const card = document.createElement("div");
+    card.className = "pos-card";
+
+    const ic = document.createElement("div");
+    ic.className = "pos-icon";
+    ic.textContent = "📍";
+
+    const meta = document.createElement("div");
+    meta.className = "pos-meta";
+
+    const lbl = document.createElement("div");
+    lbl.className = "pos-label";
+    lbl.textContent = "Sua posição na lista";
+
+    const num = document.createElement("div");
+    num.className = "pos-number";
+    num.textContent = position + "º";
+
+    const sub = document.createElement("div");
+    sub.className = "pos-sub";
+    sub.textContent = "Agora é só aguardar sua vez.";
+
+    meta.appendChild(lbl);
+    meta.appendChild(num);
+    meta.appendChild(sub);
+
+    card.appendChild(ic);
+    card.appendChild(meta);
+    body.appendChild(card);
+  }
+
+  act.innerHTML = "";
+  actions.forEach((a, idx) => {
+    const btn = document.createElement("button");
+    btn.className = "btn " + (a.kind || (idx === actions.length - 1 ? "primary" : "ghost"));
+    btn.textContent = a.label || "OK";
+    btn.onclick = () => {
+      hideModal();
+      if (typeof a.onClick === "function") a.onClick();
+    };
+    act.appendChild(btn);
+  });
+
+  overlay.classList.add("show");
+}
+
+function hideModal() {
+  document.getElementById("modalOverlay").classList.remove("show");
+}
+document.getElementById("modalOverlay").addEventListener("click", (e) => {
+  if (e.target.id === "modalOverlay") hideModal();
+});
+
+/* ===== Pós-checkin ===== */
+function ensureDaVezBoxVisible(){
+  const box = document.getElementById("davezBox");
+  const num = document.getElementById("davezPosNum");
+  const after = document.getElementById("davezAfter");
+  const stateEl = document.getElementById("davezState");
+  const btn = document.getElementById("btnDaVez2");
+
+  if (box) {
+    box.classList.add("show");
+    box.classList.remove("despachado");
+  }
+
+  if (num && !String(num.textContent || "").trim()) {
+    num.textContent = "--";
+  }
+
+  if (after && !String(after.textContent || "").trim()) {
+    after.textContent = "--";
+  }
+
+  if (stateEl && !String(stateEl.textContent || "").trim()) {
+    stateEl.textContent = "Status: aguardando";
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = "Estou na loja";
+  }
+}
+
+function setWaitingMode(nome, pos) {
+  const formBox = document.getElementById("formBox");
+  const waitBox = document.getElementById("waitBox");
+  const waitText = document.getElementById("waitText");
+  const waitPos = document.getElementById("waitPos");
+  const waitPosNum = document.getElementById("waitPosNum");
+
+  formBox.style.display = "none";
+  waitBox.classList.add("show");
+
+  waitText.textContent = nome
+    ? `Check-in registrado para "${nome}". Agora é só aguardar sua vez.`
+    : `Seu check-in foi registrado. Agora é só aguardar sua vez.`;
+
+  if (typeof pos === "number" && pos > 0) {
+    waitPos.classList.add("show");
+    waitPosNum.textContent = pos + "º";
+  } else {
+    waitPos.classList.remove("show");
+    waitPosNum.textContent = "--";
+  }
+
+  localStorage.setItem("checked_in_active", "1");
+  if (nome) localStorage.setItem("checked_in_name", nome);
+
+  if (typeof pos === "number" && pos > 0) {
+    localStorage.setItem("checked_in_pos", String(pos));
+  } else {
+    localStorage.removeItem("checked_in_pos");
+  }
+
+  if (nome) localStorage.setItem("motoboy_nome", nome);
+
+  ensureDaVezBoxVisible();
+}
+
+/* ===== Re-login ===== */
+async function tryRelogin(){
+  const a = getSavedAuthLoose();
+  if (!a.nome || !a.token) return;
+
+  try{
+    const fd = new FormData();
+    fd.append("nome", a.nome);
+    fd.append("token", a.token);
+
+    const r = await fetch(RELOGIN_URL, { method:"POST", body: fd, cache:"no-store" });
+    const data = await r.json().catch(()=>null);
+
+    if (data && data.ok){
+      saveAuth(data.nome || a.nome, a.token);
+      setWaitingMode(data.nome || a.nome, (typeof data.pos === "number" ? data.pos : null));
+      return;
+    }
+
+    localStorage.removeItem("checked_in_active");
+    localStorage.removeItem("checked_in_name");
+    localStorage.removeItem("checked_in_pos");
+  }catch(e){}
+}
+
+async function relogarEIrProAguardando(nome, token, silent=false){
+  try{
+    if (!silent) setStatus("Você já fez check-in neste ciclo. Estamos te logando…");
+
+    const fd = new FormData();
+    fd.append("nome", String(nome || "").trim());
+    fd.append("token", String(token || "").trim());
+
+    const r = await fetch(RELOGIN_URL, { method:"POST", body: fd, cache:"no-store" });
+    const data = await r.json().catch(()=>null);
+
+    if (data && data.ok){
+      saveAuth(data.nome || nome, token);
+      if (!silent) clearStatus();
+      setWaitingMode(data.nome || nome, (typeof data.pos === "number" ? data.pos : null));
+      return true;
+    }
+
+    if (!silent) clearStatus();
+    return false;
+  }catch(e){
+    if (!silent) clearStatus();
+    return false;
+  }
+}
+
+/* ===== Inicialização ===== */
+(async function initLoginFlow(){
+  await syncTokenCycleCache();
+
+  const active = (localStorage.getItem("checked_in_active") || "") === "1";
+  const nome = (localStorage.getItem("checked_in_name") || "").trim();
+  const pos = parseInt(localStorage.getItem("checked_in_pos") || "", 10);
+
+  autofillAuthInputs();
+
+  if (active && nome) {
+    setWaitingMode(nome, Number.isFinite(pos) ? pos : undefined);
+  }
+
+  tryRelogin();
+})();
+
+/* ===== DA VEZ ===== */
+let davezPollTimer = null;
+
+function setDaVezBox(pos, depoisDe){
+  const box = document.getElementById("davezBox");
+  const num = document.getElementById("davezPosNum");
+  const after = document.getElementById("davezAfter");
+
+  if (!box || !num || !after) return;
+
+  box.classList.add("show");
+  num.textContent = (typeof pos === "number" && pos > 0) ? (pos + "º") : "--";
+
+  if (pos === 1) {
+    after.textContent = "Ninguém (você é o 1º)";
+  } else if (depoisDe) {
+    after.textContent = depoisDe;
+  } else {
+    after.textContent = "--";
+  }
+
+  try{
+    localStorage.setItem("davez_day", operationalDayKey());
+    localStorage.setItem("davez_pos", String(pos || ""));
+    localStorage.setItem("davez_after", String(depoisDe || ""));
+    localStorage.setItem("davez_active", "1");
+  }catch(e){}
+}
+
+function clearDaVezState(){
+  const btn = document.getElementById("btnDaVez2");
+  const stateEl = document.getElementById("davezState");
+  const box = document.getElementById("davezBox");
+  const num = document.getElementById("davezPosNum");
+  const after = document.getElementById("davezAfter");
+
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = "Estou na loja";
+  }
+
+  if (stateEl) {
+    stateEl.textContent = "Status: aguardando";
+  }
+
+  if (num) {
+    num.textContent = "--";
+  }
+
+  if (after) {
+    after.textContent = "--";
+  }
+
+  if (box) {
+    box.classList.remove("despachado");
+    box.classList.add("show");
+  }
+
+  try{
+    localStorage.removeItem("davez_status");
+    localStorage.removeItem("davez_active");
+    localStorage.removeItem("davez_pos");
+    localStorage.removeItem("davez_after");
+    localStorage.removeItem("davez_day");
+  }catch(e){}
+}
+
+function humanStatusLabel(st){
+  const s = String(st || "").toLowerCase().trim();
+  if (!s) return "aguardando";
+  if (s === "em_entrega") return "EM ENTREGA (DESPACHADO) ✅";
+  if (s === "na_fila") return "na fila";
+  if (s.includes("despach")) return "DESPACHADO ✅";
+  if (s.includes("entrega")) return "EM ENTREGA ✅";
+  if (s.includes("final")) return "finalizado";
+  if (s.includes("remov")) return "removido";
+  if (s.includes("cancel")) return "cancelado";
+  if (s.includes("aguard")) return "aguardando";
+  return s;
+}
+
+function setDaVezStateUI({ status, pos, depoisDe }){
+  const box = document.getElementById("davezBox");
+  const stateEl = document.getElementById("davezState");
+  const btn = document.getElementById("btnDaVez2");
+
+  if (!box || !stateEl || !btn) return;
+
+  if (typeof pos === "number" && pos > 0) {
+    setDaVezBox(pos, depoisDe || null);
+  }
+
+  const s = String(status || "").toLowerCase().trim();
+  stateEl.textContent = "Status: " + humanStatusLabel(status);
+
+  try{
+    localStorage.setItem("davez_status", s);
+  }catch(e){}
+
+  if (s === "na_fila") {
+    btn.disabled = true;
+    btn.textContent = "Aguardando despacho";
+  } else {
+    btn.disabled = false;
+    btn.textContent = "Estou na loja";
+  }
+
+  if (s === "em_entrega" || s.includes("despach") || s.includes("entrega")) {
+    box.classList.add("despachado");
+    box.classList.add("show");
+  } else {
+    box.classList.remove("despachado");
+  }
+}
+
+async function refreshDaVezFromServer(){
+  try{
+    const data = await fetch(DAVEZ_LIST_URL, { cache: "no-store" }).then(r=>r.json()).catch(()=>null);
+    if (!data || !data.ok || !Array.isArray(data.fila)) return;
+
+    const cid = getClientId();
+    const todosDoCid = data.fila.filter(x => String(x.client_id || '') === cid);
+
+    if (!todosDoCid.length) {
+      clearDaVezState();
+      return;
+    }
+
+    const me = todosDoCid.sort((a, b) => {
+      const ta = new Date(a.entered_at || 0).getTime();
+      const tb = new Date(b.entered_at || 0).getTime();
+      return tb - ta;
+    })[0];
+
+    if (String(me.status || '') !== 'na_fila') {
+      setDaVezStateUI({
+        status: me.status,
+        pos: null,
+        depoisDe: null
+      });
+      return;
+    }
+
+    const naFila = data.fila.filter(x => String(x.status || '') === 'na_fila');
+    const idx = naFila.findIndex(x => String(x.client_id || '') === cid);
+
+    let pos = null;
+    let depoisDe = null;
+
+    if (idx >= 0) {
+      pos = idx + 1;
+      if (idx > 0) {
+        const anterior = naFila[idx - 1];
+        depoisDe = (anterior && (anterior.nome || anterior.name)) ? (anterior.nome || anterior.name) : null;
+      }
+    }
+
+    setDaVezStateUI({
+      status: me.status,
+      pos,
+      depoisDe
+    });
+
+  } catch(e){}
+}
+
+function startDaVezPolling(){
+  if (davezPollTimer) return;
+  refreshDaVezFromServer();
+  davezPollTimer = setInterval(refreshDaVezFromServer, 5000);
+}
+
+(function restoreDaVezBox(){
+  try{
+    const active = (localStorage.getItem("davez_active") || "") === "1";
+    const day = (localStorage.getItem("davez_day") || "");
+    const status = (localStorage.getItem("davez_status") || "").trim();
+    const p = parseInt(localStorage.getItem("davez_pos") || "", 10);
+    const a = (localStorage.getItem("davez_after") || "").trim();
+
+    if (active && day === operationalDayKey()) {
+      ensureDaVezBoxVisible();
+
+      if (Number.isFinite(p) && p > 0) {
+        setDaVezBox(p, a || null);
+      }
+
+      setDaVezStateUI({
+        status: status || "na_fila",
+        pos: Number.isFinite(p) ? p : null,
+        depoisDe: a || null
+      });
+    }
+  }catch(e){}
+
+  startDaVezPolling();
+})();
+
+/* ===== Atualizar sistema ===== */
+async function atualizarSistema(){
+  const btn = document.getElementById("btnRefreshFloat");
+  if (btn) btn.disabled = true;
+
+  try{
+    // 1. limpa caches do Service Worker (se existir)
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+
+    // 2. tenta atualizar o service worker
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ action: 'skipWaiting' });
+    }
+
+    // 3. recarrega ignorando cache (modo hard reload)
+    window.location.href = window.location.pathname + "?v=" + Date.now();
+
+  } catch(e){
+    // claro que pode dar erro, nada nessa vida é simples
+    window.location.reload(true);
+  }
+}
+/* ===== Geoloc ===== */
+function geoloc() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject({ code: "NO_GEO", message: "Seu celular não suporta localização." });
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      resolve,
+      reject,
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 5000 }
+    );
+  });
+}
+
+function geoErrorMessage(err) {
+  if (!err) return "Erro desconhecido ao obter localização.";
+  if (err.code === "NO_GEO") return err.message;
+  if (err.code === 1) return "Permissão de localização negada. Ative a permissão e tente novamente.";
+  if (err.code === 2) return "Não foi possível obter localização. Tente em local aberto ou com melhor sinal.";
+  if (err.code === 3) return "Tempo esgotado ao obter localização. Aguarde o GPS estabilizar e tente novamente.";
+  return "Falha ao obter localização. Ative o GPS e tente novamente.";
+}
+
+/* ===== InfinityFree challenge ===== */
+function isInfinityFreeChallenge(html) {
+  if (!html) return false;
+  const h = html.toLowerCase();
+  return (
+    h.includes("this site requires javascript") ||
+    h.includes("/aes.js") ||
+    h.includes("slowaes") ||
+    h.includes("__test=") ||
+    (h.includes("document.cookie") && h.includes("__test")) ||
+    (h.includes("location.href") && h.includes("checkin.php"))
+  );
+}
+
+function submitAsForm(payload) {
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = CHECKIN_URL;
+  form.style.display = "none";
+
+  Object.entries(payload).forEach(([k, v]) => {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = k;
+    input.value = String(v);
+    form.appendChild(input);
+  });
+
+  document.body.appendChild(form);
+  form.submit();
+}
+
+function startWarmup(payload) {
+  sessionStorage.setItem("pending_checkin", JSON.stringify(payload));
+  setStatus("Validando servidor… (isso é do provedor)");
+  window.location.href = CHECKIN_URL + "&warmup=1";
+}
+
+async function enviarCheckin(payload) {
+  const dados = new FormData();
+  Object.entries(payload).forEach(([k, v]) => dados.append(k, v));
+
+  const r = await fetch(CHECKIN_URL, { method: "POST", body: dados });
+  const t = await r.text();
+
+  if (isInfinityFreeChallenge(t)) {
+    startWarmup(payload);
+    return { ok: false, text: "challenge" };
+  }
+
+  return { ok: r.ok, status: r.status, text: t };
+}
+
+(function autoSubmitAfterWarmup(){
+  const qs = new URLSearchParams(window.location.search);
+  if (qs.get("warm") === "1") {
+    const raw = sessionStorage.getItem("pending_checkin");
+    if (raw) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      try {
+        const payload = JSON.parse(raw);
+        sessionStorage.removeItem("pending_checkin");
+        setStatus("Finalizando check-in…");
+        setTimeout(() => submitAsForm(payload), 150);
+      } catch (_) {
+        sessionStorage.removeItem("pending_checkin");
+      }
+    }
+  }
+})();
+
+/* ===== Util ===== */
+function extractPosFromText(t){
+  const s = String(t || "");
+  const m = s.match(/posi[cç][aã]o\s+na\s+lista\s*:\s*(\d{1,5})/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/* ===== DA VEZ ===== */
+async function entrarDaVez(fromWait=false){
+  clearStatus();
+
+  const nomeEl = document.getElementById("nome");
+  const tokenEl = document.getElementById("token");
+
+  const saved = getSavedAuth();
+
+  const nomeDigitado = (nomeEl ? nomeEl.value : "").trim();
+  const tokenDigitado = (tokenEl ? tokenEl.value : "").trim();
+
+  const nome = nomeDigitado || saved.nome || getSavedNameFallback();
+  const token = tokenDigitado || saved.token;
+
+  if (nomeEl && nome && !nomeDigitado) nomeEl.value = nome;
+  if (tokenEl && token && !tokenDigitado) tokenEl.value = token;
+
+  if (!nome){
+    showModal({
+      type:"warn",
+      title:"Faltou o nome",
+      message:"Digite seu nome para entrar na fila da vez.",
+      actions:[{label:"OK"}]
+    });
+    if (nomeEl) nomeEl.focus();
+    return;
+  }
+
+  if (!token){
+    showModal({
+      type:"warn",
+      title:"Faltou o token",
+      message:"Digite o token do ciclo para continuar.",
+      actions:[{label:"OK"}]
+    });
+    if (tokenEl) tokenEl.focus();
+    return;
+  }
+
+  saveAuth(nome, token);
+
+  let geo;
+  try{
+    geo = await geoloc();
+  } catch(e){
+    showModal({
+      type:"err",
+      title:"Localização falhou",
+      message:"Não deu pra pegar sua localização. Ative GPS e tente de novo."
+    });
+    return;
+  }
+
+  const lat = geo.coords.latitude;
+  const lng = geo.coords.longitude;
+
+  try{
+    const fd = new FormData();
+    fd.append("nome", nome);
+    fd.append("token", token);
+    fd.append("lat", String(lat));
+    fd.append("lng", String(lng));
+    fd.append("client_id", getClientId());
+
+    const resp = await fetch(DAVEZ_ENTER_URL, {
+      method: "POST",
+      body: fd
+    });
+
+    const txt = await resp.text();
+
+    if (!resp.ok){
+      showModal({
+        type:"err",
+        title:"Não entrou na fila",
+        message: txt || ("Erro " + resp.status)
+      });
+      return;
+    }
+
+    let p = null;
+    let depoisDe = null;
+
+    try{
+      const listResp = await fetch(DAVEZ_LIST_URL, { cache: "no-store" });
+      const data = await listResp.json();
+
+      if (data && data.ok && Array.isArray(data.fila)){
+        const cid = getClientId();
+        const naFila = data.fila.filter(x => String(x.status || "") === "na_fila");
+        const idx = naFila.findIndex(x => String(x.client_id || "") === cid);
+
+        if (idx >= 0) {
+          p = idx + 1;
+          if (idx > 0) {
+            const anterior = naFila[idx - 1];
+            depoisDe = (anterior && (anterior.nome || anterior.name))
+              ? (anterior.nome || anterior.name)
+              : null;
+          }
+        }
+      }
+    } catch(e){}
+
+    setDaVezBox(p, depoisDe);
+
+    const btn = document.getElementById("btnDaVez2");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Aguardando despacho";
+    }
+
+    setDaVezStateUI({ status: "na_fila", pos: p, depoisDe: depoisDe });
+    startDaVezPolling();
+
+    setStatus(txt || "Você entrou na fila DA VEZ.");
+    setTimeout(clearStatus, 2500);
+
+  } catch(e){
+    setStatus("Atualizando fila…");
+    startDaVezPolling();
+
+    setTimeout(async () => {
+      try{
+        await refreshDaVezFromServer();
+      } catch(_) {}
+
+      clearStatus();
+
+      const box = document.getElementById("davezBox");
+      const btn = document.getElementById("btnDaVez2");
+      const posEl = document.getElementById("davezPosNum");
+
+      const entrouNaFila =
+        box &&
+        box.classList.contains("show") &&
+        posEl &&
+        String(posEl.textContent || "").trim() !== "--";
+
+      if (entrouNaFila) return;
+
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Estou na loja";
+      }
+
+      showModal({
+        type:"err",
+        title:"Erro",
+        message:"Não consegui confirmar sua entrada na fila da vez. Tente novamente."
+      });
+    }, 1200);
+  }
+}
+
+/* ===== CHECK-IN ===== */
+async function checkin() {
+  const btn = document.getElementById("btn");
+  const nomeEl = document.getElementById("nome");
+  const tokenEl = document.getElementById("token");
+
+  const saved = getSavedAuth();
+  const nomeDigitado = (nomeEl.value || "").trim();
+  const tokenDigitado = (tokenEl.value || "").trim();
+
+  const nome = nomeDigitado || saved.nome || getSavedNameFallback();
+  const token = tokenDigitado || saved.token;
+
+  if (nome && !nomeDigitado) nomeEl.value = nome;
+  if (token && !tokenDigitado) tokenEl.value = token;
+
+  if (!nome) {
+    showModal({ type:"warn", title:"Faltou seu nome", message:"Digite seu nome para continuar.", actions:[{label:"OK"}] });
+    nomeEl.focus();
+    return;
+  }
+  if (!token) {
+    showModal({ type:"warn", title:"Faltou o token", message:"Digite o token do ciclo para continuar.", actions:[{label:"OK"}] });
+    tokenEl.focus();
+    return;
+  }
+
+  saveAuth(nome, token);
+
+  btn.disabled = true;
+  btn.textContent = "Aguarde...";
+  setStatus("Pegando localização (alta precisão)…");
+
+  try {
+    const pos = await geoloc();
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const acc = pos.coords.accuracy;
+
+    setStatus(`Localização ok (precisão ~ ${Math.round(acc)}m). Enviando check-in…`);
+
+    const payload = { nome, token, lat, lng, client_id: getClientId() };
+    const resp = await enviarCheckin(payload);
+    if (resp.text === "challenge") return;
+
+    const t = (resp.text || "").trim();
+    const posNum = extractPosFromText(t);
+
+    if (resp.ok && /sucesso|confirmado/i.test(t)) {
+      clearStatus();
+      showModal({
+        type: "ok",
+        title: "Check-in confirmado",
+        message: "Seu check-in foi registrado com sucesso.",
+        position: posNum,
+        actions: [{
+          label: "Entendi",
+          kind: "primary",
+          onClick: () => setWaitingMode(nome, posNum)
+        }]
+      });
+      return;
+    }
+
+    clearStatus();
+
+    if (/já realizado|duplicado/i.test(t) || resp.status === 409) {
+      const ok = await relogarEIrProAguardando(nome, token);
+      if (!ok){
+        showModal({
+          type: "warn",
+          title: "Você já fez check-in neste ciclo",
+          message: "Você já fez check-in neste ciclo.\nTentamos te logar automaticamente, mas não conseguimos.\nSe estiver testando, peça para o admin limpar a lista do ciclo atual.",
+          actions: [{ label: "OK", kind: "primary" }]
+        });
+      }
+      return;
+    }
+
+    if (/token/i.test(t) || resp.status === 403) {
+      showModal({
+        type: "err",
+        title: "Não foi possível validar",
+        message: t || "Falha ao validar token/chamada.",
+        actions: [{ label: "OK", kind: "primary" }]
+      });
+      return;
+    }
+
+    showModal({
+      type: "err",
+      title: "Não foi possível realizar o check-in",
+      message: t || "Erro desconhecido.",
+      actions: [{ label: "OK", kind: "primary" }]
+    });
+
+  } catch (err) {
+    clearStatus();
+    showModal({
+      type: "err",
+      title: "Problema com localização",
+      message: geoErrorMessage(err),
+      actions: [{ label: "OK", kind: "primary" }]
+    });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Fazer Check-In";
+  }
+}
+
+/* ===== PWA / INSTALAÇÃO ===== */
+let deferredPrompt = null;
+
+function isIOS() {
+  return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+}
+
+function isInStandaloneMode() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
+function setupPWAInstallUI() {
+  const pwaBox = document.getElementById("pwaBox");
+  const pwaText = document.getElementById("pwaText");
+  const btnInstall = document.getElementById("btnInstalarApp");
+  const btnIOS = document.getElementById("btnInstalarIOS");
+
+  if (!pwaBox || !pwaText || !btnInstall || !btnIOS) return;
+
+  if (isInStandaloneMode()) {
+    pwaBox.classList.remove("show");
+    return;
+  }
+
+  pwaBox.classList.add("show");
+
+  if (isIOS()) {
+    btnIOS.style.display = "block";
+    pwaText.textContent = "No iPhone, abra no Safari e use Compartilhar > Adicionar à Tela de Início.";
+    btnIOS.addEventListener("click", () => {
+      showModal({
+        type: "info",
+        title: "Instalar no iPhone",
+        message: "Para instalar no iPhone:\n\n1. Abra este site no Safari\n2. Toque em Compartilhar\n3. Toque em 'Adicionar à Tela de Início'\n4. Confirme em 'Adicionar'"
+      });
+    });
+  }
+}
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+
+  const pwaBox = document.getElementById("pwaBox");
+  const btnInstall = document.getElementById("btnInstalarApp");
+
+  if (pwaBox && !isInStandaloneMode()) {
+    pwaBox.classList.add("show");
+  }
+  if (btnInstall) {
+    btnInstall.style.display = "block";
+  }
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  setupPWAInstallUI();
+
+  const btnInstall = document.getElementById("btnInstalarApp");
+  if (btnInstall) {
+    btnInstall.addEventListener("click", async () => {
+      if (!deferredPrompt) {
+        showModal({
+          type: "info",
+          title: "Instalação",
+          message: "Se a opção de instalar não apareceu, abra o menu do navegador e procure por 'Instalar app' ou 'Adicionar à tela inicial'."
+        });
+        return;
+      }
+
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      btnInstall.style.display = "none";
+    });
+  }
+});
+
+/* ===== SERVICE WORKER ===== */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js")
+      .then(reg => {
+        console.log("Service Worker registrado com sucesso:", reg.scope);
+      })
+      .catch(err => {
+        console.error("Erro ao registrar o Service Worker:", err);
+      });
+  });
+}
+
+console.log("checkin:", typeof checkin);
+console.log("entrarDaVez:", typeof entrarDaVez);
+console.log("atualizarSistema:", typeof atualizarSistema);
+console.log("syncTokenCycleCache:", typeof syncTokenCycleCache);
+</script>
+</body>
+</html>
