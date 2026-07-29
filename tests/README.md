@@ -38,3 +38,11 @@ php tests/security/log_event_test.php
 ```
 
 Grava um evento em arquivo temporário pela implementação real de `log_event` e confirma que dados sensíveis são descartados enquanto métricas operacionais permitidas permanecem.
+
+### Política do cache da PWA
+
+```powershell
+node tests/security/service_worker_cache_policy.test.js
+```
+
+Confirma que apenas assets estáticos conhecidos entram no cache. Navegações usam rede com fallback offline, enquanto PHP, APIs, painel, logs, relatórios, origens externas e métodos não GET permanecem fora do Service Worker.
