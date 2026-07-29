@@ -13,3 +13,13 @@ Prioridades para a futura suíte:
 5. rotação e expiração de sessão;
 6. limpeza do ciclo e geração de relatórios;
 7. sanitização de logs e erros públicos.
+
+## Testes disponíveis
+
+### Política do cache da PWA
+
+```powershell
+node tests/security/service_worker_cache_policy.test.js
+```
+
+Confirma que apenas assets estáticos conhecidos entram no cache. Navegações usam rede com fallback offline, enquanto PHP, APIs, painel, logs, relatórios, origens externas e métodos não GET permanecem fora do Service Worker.

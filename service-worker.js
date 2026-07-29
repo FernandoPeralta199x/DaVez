@@ -1,59 +1,155 @@
-const CACHE_NAME = "motoboys-pwa-v1";
+const CACHE_NAME = "motoboys-static-v2";
 
-const urlsToCache = [
-  "/",
-  "/index.html",
-  "/manifest.json",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png"
+const STATIC_ASSET_PATHS = [
+  "./index.html",
+  "./manifest.json",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./img/logo.png",
 ];
 
-// Instala e salva arquivos básicos em cache
-self.addEventListener("install", event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(urlsToCache);
-    })
-  );
-  self.skipWaiting();
+const REQUEST_STRATEGY = Object.freeze({
+  NETWORK_ONLY: "network-only",
+  NETWORK_FIRST_NAVIGATION: "network-first-navigation",
+  CACHE_FIRST_STATIC: "cache-first-static",
 });
 
-// Ativa imediatamente
-self.addEventListener("activate", event => {
-  event.waitUntil(
-    caches.keys().then(keys => {
-      return Promise.all(
-        keys.map(key => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
+function normalizeUrlWithoutSearch(url) {
+  const normalizedUrl = new URL(url);
+  normalizedUrl.search = "";
+  normalizedUrl.hash = "";
+  return normalizedUrl.href;
+}
+
+function getStaticAssetUrls(scopeUrl) {
+  return new Set(
+    STATIC_ASSET_PATHS.map(assetPath =>
+      normalizeUrlWithoutSearch(new URL(assetPath, scopeUrl).href)
+    )
+  );
+}
+
+function classifyRequest(request, scopeUrl) {
+  if (!request || request.method !== "GET") {
+    return REQUEST_STRATEGY.NETWORK_ONLY;
+  }
+
+  if (request.mode === "navigate") {
+    return REQUEST_STRATEGY.NETWORK_FIRST_NAVIGATION;
+  }
+
+  const requestUrl = new URL(request.url);
+  const scope = new URL(scopeUrl);
+
+  if (requestUrl.origin !== scope.origin) {
+    return REQUEST_STRATEGY.NETWORK_ONLY;
+  }
+
+  const staticAssetUrls = getStaticAssetUrls(scopeUrl);
+  const normalizedRequestUrl = normalizeUrlWithoutSearch(requestUrl.href);
+
+  return staticAssetUrls.has(normalizedRequestUrl)
+    ? REQUEST_STRATEGY.CACHE_FIRST_STATIC
+    : REQUEST_STRATEGY.NETWORK_ONLY;
+}
+
+async function handleNavigationRequest(request, scopeUrl) {
+  try {
+    return await fetch(request);
+  } catch (error) {
+    const cache = await caches.open(CACHE_NAME);
+    const offlinePageUrl = new URL("./index.html", scopeUrl).href;
+    const offlinePage = await cache.match(offlinePageUrl);
+
+    return offlinePage || Response.error();
+  }
+}
+
+async function handleStaticAssetRequest(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cachedResponse = await cache.match(request, { ignoreSearch: true });
+
+  if (cachedResponse) {
+    return cachedResponse;
+  }
+
+  const networkResponse = await fetch(request);
+
+  if (networkResponse.ok && networkResponse.type === "basic") {
+    await cache.put(request, networkResponse.clone());
+  }
+
+  return networkResponse;
+}
+
+function registerServiceWorkerEvents(serviceWorkerScope) {
+  serviceWorkerScope.addEventListener("install", event => {
+    event.waitUntil(
+      caches
+        .open(CACHE_NAME)
+        .then(cache => cache.addAll(STATIC_ASSET_PATHS))
+        .then(() => serviceWorkerScope.skipWaiting())
+    );
+  });
+
+  serviceWorkerScope.addEventListener("activate", event => {
+    event.waitUntil(
+      caches
+        .keys()
+        .then(cacheNames =>
+          Promise.all(
+            cacheNames
+              .filter(
+                cacheName =>
+                  cacheName.startsWith("motoboys-") && cacheName !== CACHE_NAME
+              )
+              .map(cacheName => caches.delete(cacheName))
+          )
+        )
+        .then(() => serviceWorkerScope.clients.claim())
+    );
+  });
+
+  serviceWorkerScope.addEventListener("fetch", event => {
+    const strategy = classifyRequest(
+      event.request,
+      serviceWorkerScope.registration.scope
+    );
+
+    if (strategy === REQUEST_STRATEGY.NETWORK_FIRST_NAVIGATION) {
+      event.respondWith(
+        handleNavigationRequest(
+          event.request,
+          serviceWorkerScope.registration.scope
+        )
       );
-    })
-  );
-  self.clients.claim();
-});
+      return;
+    }
 
-// Estratégia simples:
-// tenta rede primeiro, se falhar usa cache
-self.addEventListener("fetch", event => {
-  if (event.request.method !== "GET") return;
+    if (strategy === REQUEST_STRATEGY.CACHE_FIRST_STATIC) {
+      event.respondWith(handleStaticAssetRequest(event.request));
+    }
+  });
 
-  event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        const responseClone = response.clone();
+  serviceWorkerScope.addEventListener("message", event => {
+    if (event.data && event.data.action === "skipWaiting") {
+      serviceWorkerScope.skipWaiting();
+    }
+  });
+}
 
-        caches.open(CACHE_NAME).then(cache => {
-          cache.put(event.request, responseClone).catch(() => {});
-        });
+if (typeof self !== "undefined" && typeof self.addEventListener === "function") {
+  registerServiceWorkerEvents(self);
+}
 
-        return response;
-      })
-      .catch(() => {
-        return caches.match(event.request).then(cached => {
-          return cached || caches.match("/index.html");
-        });
-      })
-  );
-});
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    CACHE_NAME,
+    STATIC_ASSET_PATHS,
+    REQUEST_STRATEGY,
+    classifyRequest,
+    getStaticAssetUrls,
+    normalizeUrlWithoutSearch,
+    registerServiceWorkerEvents,
+  };
+}
