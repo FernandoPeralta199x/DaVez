@@ -8,7 +8,9 @@ $requiredEnvironmentVariables = [
     'DB_USER',
     'DB_PASSWORD',
     'ADMIN_USER',
-    'ADMIN_PASSWORD',
+    'ADMIN_PASSWORD_HASH',
+    'APP_RATE_LIMIT_DIR',
+    'APP_RATE_LIMIT_SECRET',
 ];
 
 foreach ($requiredEnvironmentVariables as $variableName) {
@@ -34,20 +36,6 @@ try {
     throw new RuntimeException('Não foi possível conectar ao banco de dados.');
 }
 
-define('ADMIN_USER', getenv('ADMIN_USER'));
-define('ADMIN_PASS', getenv('ADMIN_PASSWORD'));
-
-function require_admin(): void
-{
-    $providedUser = $_SERVER['PHP_AUTH_USER'] ?? '';
-    $providedPassword = $_SERVER['PHP_AUTH_PW'] ?? '';
-
-    $validUser = hash_equals((string) ADMIN_USER, (string) $providedUser);
-    $validPassword = hash_equals((string) ADMIN_PASS, (string) $providedPassword);
-
-    if (!$validUser || !$validPassword) {
-        header('WWW-Authenticate: Basic realm="DaVez Administração"');
-        http_response_code(401);
-        exit('Autenticação necessária.');
-    }
-}
+// A autenticação administrativa é feita por src/Security/AdminAuth.php.
+// ADMIN_PASSWORD_HASH deve ser criado com password_hash(); nunca use senha
+// administrativa em texto puro na configuração.

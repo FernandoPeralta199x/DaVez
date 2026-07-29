@@ -2,12 +2,15 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8" />
-<title>Chamada Motoboys</title>
+<title>DaVez — Check-in de motoboys</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Faça seu check-in e acompanhe sua posição nas filas de motoboys da DaVez." />
+<meta name="color-scheme" content="light dark" />
 
 <!-- ===== PWA ===== -->
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#1e88e5">
+<meta name="theme-color" content="#f4f6fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#07101f" media="(prefers-color-scheme: dark)">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -15,571 +18,1277 @@
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 
 <style>
-* { box-sizing: border-box; }
-html, body { width: 100%; height: 100%; }
+:root {
+  --canvas: #f4f6fa;
+  --canvas-deep: #e8edf6;
+  --surface: #ffffff;
+  --surface-soft: #f8faff;
+  --ink: #0b1838;
+  --muted: #5d667a;
+  --line: #d6ddea;
+  --route: #164fc9;
+  --route-strong: #0f3d9f;
+  --route-soft: #e7eefc;
+  --locator: #b84b00;
+  --success: #18794e;
+  --success-soft: #e7f5ee;
+  --warning: #9a4d00;
+  --warning-soft: #fff2df;
+  --danger: #b4232e;
+  --danger-soft: #fdecee;
+  --shadow: 0 18px 52px rgba(25, 48, 94, 0.11);
+  --shadow-soft: 0 8px 24px rgba(25, 48, 94, 0.08);
+  --radius-card: 1.75rem;
+  --radius-panel: 1.15rem;
+  --radius-control: 0.85rem;
+  --z-content: 1;
+  --z-floating: 20;
+  --z-dialog: 40;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 20rem;
+  color-scheme: light dark;
+  scroll-behavior: smooth;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+}
 
 body {
   margin: 0;
-  font-family: Arial, Helvetica, sans-serif;
-  background: #f2f2f2;
-  color: #111;
+  overflow-x: hidden;
+  font-family: "Plus Jakarta Sans", "Aptos Display", "Segoe UI Variable", system-ui, -apple-system, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(22, 79, 201, 0.11), transparent 31rem),
+    radial-gradient(circle at 92% 88%, rgba(230, 107, 0, 0.08), transparent 26rem),
+    var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  opacity: 0.34;
+  background-image:
+    linear-gradient(rgba(11, 24, 56, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(11, 24, 56, 0.035) 1px, transparent 1px);
+  background-size: 2.5rem 2.5rem;
+  mask-image: linear-gradient(to bottom, #000, transparent 75%);
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: calc(var(--z-dialog) + 1);
+  padding: 0.75rem 1rem;
+  border-radius: 0.65rem;
+  color: #fff;
+  background: var(--ink);
+  transform: translateY(-160%);
+  transition: transform 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
 }
 
 .container {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-.logo-top{
-  text-align:center;
-  margin-bottom:15px;
+  position: relative;
+  z-index: var(--z-content);
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding:
+    max(1.25rem, env(safe-area-inset-top))
+    max(1rem, env(safe-area-inset-right))
+    max(5.5rem, calc(1.75rem + env(safe-area-inset-bottom)))
+    max(1rem, env(safe-area-inset-left));
 }
 
-.logo-top img{
-  max-width:150px;
-  height:auto;
+.card-shell {
+  width: min(100%, 32.8rem);
+  padding: 0.4rem;
+  border: 1px solid rgba(22, 79, 201, 0.09);
+  border-radius: 2.15rem;
+  background: rgba(255, 255, 255, 0.48);
+  box-shadow: var(--shadow);
+  animation: surface-reveal 720ms cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 
 .card {
-  background: #fff;
+  position: relative;
   width: 100%;
-  max-width: 420px;
-  padding: 24px;
-  border-radius: 14px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+  max-width: none;
+  padding: clamp(1.25rem, 5vw, 2rem);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.93);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), var(--shadow-soft);
 }
 
-h2 { text-align: center; margin: 0 0 18px; }
+.card::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8rem;
+  height: 0.3rem;
+  border-radius: 0 0 0 1rem;
+  content: "";
+  background: linear-gradient(90deg, var(--route), #3d78e8 68%, #e66b00);
+}
+
+.logo-top {
+  margin-bottom: 1.25rem;
+  text-align: left;
+}
+
+.logo-top img {
+  display: block;
+  width: auto;
+  max-width: min(10.25rem, 56vw);
+  height: auto;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 0.45rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  color: var(--route);
+  background: var(--route-soft);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+h1,
+.wait-title {
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+h1 {
+  max-width: 16ch;
+  margin: 0;
+  font-size: clamp(1.65rem, 7vw, 2.3rem);
+  font-weight: 760;
+  line-height: 1.03;
+  letter-spacing: -0.045em;
+}
+
+.lead {
+  max-width: 42ch;
+  margin: 0.65rem 0 1.5rem;
+  color: var(--muted);
+  font-size: 0.96rem;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.field {
+  margin-top: 1rem;
+}
+
+.field label {
+  display: inline-block;
+  margin: 0 0 0.42rem 0.1rem;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 680;
+}
+
+.field-hint {
+  display: block;
+  margin: 0.45rem 0.1rem 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
 
 input {
   width: 100%;
-  padding: 14px;
-  margin-bottom: 12px;
-  border-radius: 10px;
-  border: 1px solid #ccc;
-  font-size: 16px;
+  min-height: 3.25rem;
+  margin: 0;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid #bcc7d9;
+  border-radius: var(--radius-control);
   outline: none;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: inset 0 1px 2px rgba(11, 24, 56, 0.04);
+  font: inherit;
+  font-size: 1rem;
+  transition: border-color 240ms cubic-bezier(0.32, 0.72, 0, 1), box-shadow 240ms cubic-bezier(0.32, 0.72, 0, 1), background 240ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-input:focus {
-  border-color: #1e88e5;
-  box-shadow: 0 0 0 3px rgba(30,136,229,0.15);
+input::placeholder {
+  color: #7b8597;
+}
+
+input:hover {
+  border-color: #8e9cb2;
+}
+
+input:focus-visible {
+  border-color: var(--route);
+  box-shadow: 0 0 0 0.23rem rgba(22, 79, 201, 0.18);
 }
 
 button {
   width: 100%;
-  padding: 14px;
-  background: #1e88e5;
-  border: none;
-  border-radius: 10px;
+  min-height: 3rem;
+  padding: 0.85rem 1rem;
+  border: 0;
+  border-radius: 999px;
   color: #fff;
-  font-size: 16px;
-  font-weight: bold;
+  background: var(--route);
+  box-shadow: 0 8px 20px rgba(22, 79, 201, 0.18);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 720;
   cursor: pointer;
+  transition: transform 240ms cubic-bezier(0.32, 0.72, 0, 1), background 240ms cubic-bezier(0.32, 0.72, 0, 1), box-shadow 240ms cubic-bezier(0.32, 0.72, 0, 1), opacity 240ms cubic-bezier(0.32, 0.72, 0, 1);
+  -webkit-tap-highlight-color: transparent;
 }
 
-button:disabled { opacity: 0.7; cursor: not-allowed; }
+button:hover:not(:disabled) {
+  background: var(--route-strong);
+  box-shadow: 0 11px 24px rgba(22, 79, 201, 0.24);
+  transform: translateY(-1px);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 0.2rem solid rgba(22, 79, 201, 0.28);
+  outline-offset: 0.2rem;
+}
+
+button:disabled {
+  opacity: 0.64;
+  cursor: wait;
+  box-shadow: none;
+}
+
+#btn {
+  margin-top: 1.25rem;
+}
 
 .status {
-  margin-top: 12px;
-  font-size: 14px;
-  line-height: 1.35;
-  color: #333;
-  background: #f7f7f7;
-  border: 1px solid #e6e6e6;
-  border-radius: 10px;
-  padding: 10px 12px;
   display: none;
+  min-height: 0;
+  margin-top: 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #c7d5ef;
+  border-radius: var(--radius-control);
+  color: #173a7d;
+  background: var(--route-soft);
+  font-size: 0.86rem;
+  line-height: 1.45;
 }
-.status.show { display: block; }
+
+.status.show {
+  display: block;
+}
+
+.status[data-tone="error"] {
+  border-color: #f2bdc2;
+  color: var(--danger);
+  background: var(--danger-soft);
+}
 
 .small {
-  font-size: 12px;
-  color: #666;
-  margin-top: 10px;
-  text-align: center;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.9rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  text-align: left;
 }
 
-.pwa-box{
-  margin-top: 14px;
-  padding: 12px;
-  border-radius: 12px;
-  background: #f7fbff;
-  border: 1px solid #d7e9fb;
+.small::before {
+  flex: 0 0 auto;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-top: 0.28rem;
+  border: 2px solid var(--locator);
+  border-radius: 50% 50% 50% 0;
+  content: "";
+  transform: rotate(-45deg);
+}
+
+.app-state {
   display: none;
-}
-.pwa-box.show{ display:block; }
-
-.pwa-title{
-  font-size: 13px;
-  font-weight: 800;
-  color: #1e88e5;
-  margin-bottom: 6px;
-}
-
-.pwa-text{
-  font-size: 12px;
-  color: #355;
+  align-items: flex-start;
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #d4dbea;
+  border-radius: var(--radius-control);
+  color: var(--muted);
+  background: var(--surface-soft);
+  font-size: 0.8rem;
   line-height: 1.4;
 }
 
-.pwa-btn{
-  margin-top: 10px;
-  width: 100%;
-  padding: 12px;
-  background: #111;
-  border: none;
-  border-radius: 10px;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
+.app-state.show {
+  display: flex;
 }
 
+.app-state[data-state="offline"] {
+  border-color: #edc99c;
+  color: #713d00;
+  background: var(--warning-soft);
+}
+
+.app-state[data-state="update"] {
+  border-color: #b7c9ef;
+  color: #173a7d;
+  background: var(--route-soft);
+}
+
+.app-state[data-state="error"] {
+  border-color: #f2bdc2;
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.app-state[data-state="ready"] {
+  border-color: #bcdcc9;
+  color: #175c3d;
+  background: var(--success-soft);
+}
+
+.app-state-dot {
+  flex: 0 0 auto;
+  width: 0.58rem;
+  height: 0.58rem;
+  margin-top: 0.25rem;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 0.24rem color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.app-state-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-state-action {
+  display: none;
+  width: auto;
+  min-height: 2rem;
+  margin-top: 0.55rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.55rem;
+  font-size: 0.76rem;
+}
+
+.app-state[data-state="update"] .app-state-action {
+  display: inline-flex;
+  align-items: center;
+}
+
+.pwa-box {
+  display: none;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #cfdaee;
+  border-radius: var(--radius-panel);
+  background: var(--surface-soft);
+  box-shadow: inset 0 1px 0 #fff;
+}
+
+.pwa-box.show {
+  display: block;
+}
+
+.pwa-title {
+  margin-bottom: 0.35rem;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 730;
+}
+
+.pwa-text {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.pwa-btn,
 .pwa-btn.ios {
-  background: #2e7d32;
+  margin-top: 0.75rem;
+  border-radius: 999px;
+  color: var(--route);
+  background: var(--route-soft);
+  box-shadow: none;
 }
 
-/* ===== Modal ===== */
+.pwa-btn:hover:not(:disabled),
+.pwa-btn.ios:hover:not(:disabled) {
+  color: #fff;
+  background: var(--route-strong);
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.45);
+  z-index: var(--z-dialog);
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 18px;
-  z-index: 9999;
+  padding:
+    max(1rem, env(safe-area-inset-top))
+    max(1rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom))
+    max(1rem, env(safe-area-inset-left));
+  background: rgba(11, 24, 56, 0.56);
+  backdrop-filter: blur(0.4rem);
 }
-.modal-overlay.show { display: flex; }
+
+.modal-overlay.show {
+  display: flex;
+}
 
 .modal {
-  width: 100%;
-  max-width: 420px;
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+  width: min(100%, 30rem);
+  max-width: none;
   overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 1.4rem;
+  outline: none;
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgba(11, 24, 56, 0.28);
+}
+
+.modal:focus-visible {
+  box-shadow: 0 0 0 0.22rem rgba(255, 255, 255, 0.6), 0 28px 80px rgba(11, 24, 56, 0.28);
 }
 
 .modal-header {
-  padding: 16px 16px 10px;
   display: flex;
-  gap: 12px;
   align-items: center;
+  gap: 0.75rem;
+  padding: 1.2rem 1.2rem 0.65rem;
+}
+
+.badge,
+.pos-icon {
+  color: var(--route);
+  background: var(--route-soft);
 }
 
 .badge {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
   display: grid;
   place-items: center;
-  font-size: 20px;
   flex: 0 0 auto;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.85rem;
+  font-size: 1rem;
+  font-weight: 800;
 }
 
-.badge.ok { background: rgba(46,125,50,0.12); color: #2e7d32; }
-.badge.err { background: rgba(198,40,40,0.12); color: #c62828; }
-.badge.warn { background: rgba(239,108,0,0.12); color: #ef6c00; }
-.badge.info { background: rgba(30,136,229,0.12); color: #1e88e5; }
+.badge.ok {
+  color: var(--success);
+  background: var(--success-soft);
+}
 
-.modal-title { font-size: 16px; font-weight: 800; margin: 0; }
+.badge.err {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.badge.warn {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.badge.info {
+  color: var(--route);
+  background: var(--route-soft);
+}
+
+.modal-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.05rem;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
 .modal-body {
-  padding: 0 16px 12px;
-  color: #333;
-  font-size: 14px;
-  line-height: 1.45;
+  padding: 0 1.2rem 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
   white-space: pre-line;
 }
 
-.pos-card{
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px solid #e6eefc;
-  background: linear-gradient(180deg, rgba(30,136,229,0.08), rgba(30,136,229,0.03));
+.pos-card {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #c7d5ef;
+  border-radius: var(--radius-panel);
+  background: var(--route-soft);
 }
-.pos-icon{
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+
+.pos-icon {
   display: grid;
   place-items: center;
-  font-size: 22px;
-  background: rgba(30,136,229,0.14);
-  color: #1e88e5;
   flex: 0 0 auto;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 800;
 }
-.pos-meta{ min-width: 0; }
-.pos-label{
-  font-size: 12px;
-  color: #355;
-  font-weight: 900;
-  letter-spacing: .3px;
+
+.pos-meta {
+  min-width: 0;
+}
+
+.pos-label {
+  color: #35517f;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  opacity: .9;
 }
-.pos-number{
-  margin-top: 3px;
-  font-size: 34px;
-  font-weight: 900;
-  color: #1e88e5;
-  line-height: 1.05;
+
+.pos-number,
+.wait-pos .num {
+  color: var(--route);
+  font-variant-numeric: tabular-nums;
 }
-.pos-sub{
-  margin-top: 4px;
-  font-size: 13px;
-  color: #333;
+
+.pos-number {
+  margin-top: 0.2rem;
+  font-size: 2.15rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.pos-sub {
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .modal-actions {
   display: flex;
-  gap: 10px;
-  padding: 14px 16px 16px;
   justify-content: flex-end;
-  background: #fafafa;
-  border-top: 1px solid #eee;
+  gap: 0.65rem;
+  padding: 0.85rem 1.2rem 1.2rem;
+  border-top: 1px solid #e3e8f1;
+  background: var(--surface-soft);
 }
 
 .btn {
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: none;
-  font-weight: 800;
-  cursor: pointer;
+  padding-inline: 1rem;
+  font-weight: 750;
 }
-.btn.primary { background: #1e88e5; color: #fff; }
-.btn.ghost { background: #eee; color: #111; }
 
-/* ===== Tela pós check-in ===== */
-.wait-box { display: none; text-align: center; }
-.wait-box.show { display: block; }
+.modal-actions .btn {
+  width: auto;
+  min-width: 6.5rem;
+  padding-inline: 1rem;
+  border-radius: 999px;
+}
 
-.wait-header{
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.btn.primary {
+  color: #fff;
+  background: var(--route);
+}
+
+.btn.ghost {
+  color: var(--ink);
+  background: #e9edf4;
+  box-shadow: none;
+}
+
+.wait-box {
+  display: none;
   text-align: left;
-  margin-bottom: 10px;
+}
+
+.wait-box.show {
+  display: block;
+}
+
+.wait-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .wait-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 18px;
   display: grid;
   place-items: center;
-  font-size: 26px;
-  background: rgba(30,136,229,0.12);
-  color: #1e88e5;
   flex: 0 0 auto;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 1rem;
+  color: var(--route);
+  background: var(--route-soft);
 }
 
-.wait-headtext{ flex: 1; min-width: 0; }
-
-.wait-title{
-  margin: 0 0 6px;
-  font-size: 18px;
-  font-weight: 900;
+.wait-headtext {
+  flex: 1;
+  min-width: 0;
 }
-.wait-text{
+
+.wait-icon svg {
+  width: 1.55rem;
+  height: 1.55rem;
+  stroke: currentColor;
+}
+
+.wait-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+  font-weight: 760;
+  letter-spacing: -0.025em;
+}
+
+.wait-text {
   margin: 0;
-  color: #333;
-  line-height: 1.45;
-  font-size: 14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.wait-pos,
+.davez-box {
+  max-width: none;
+}
+
+.wait-pos {
+  display: none;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #c7d5ef;
+  border-radius: var(--radius-panel);
+  background: var(--route-soft);
+}
+
+.wait-pos.show {
+  display: block;
+}
+
+.wait-pos .lbl {
+  color: #35517f;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wait-pos .num {
+  margin-top: 0.25rem;
+  font-size: 2.15rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.davez-box {
+  display: none;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #bedfcc;
+  border-radius: var(--radius-panel);
+  background: var(--success-soft);
+  text-align: left;
+}
+
+.davez-box.show {
+  display: block;
+}
+
+.davez-top {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.davez-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.85rem;
+  color: var(--success);
+  background: #d5eee2;
+}
+
+.davez-icon::before {
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 0.2rem solid #fff;
+  border-radius: 50%;
+  content: "";
+  background: var(--success);
+  box-shadow: 0 0 0 0.18rem rgba(24, 121, 78, 0.18);
+}
+
+.davez-title,
+.davez-lbl {
+  color: #175c3d;
+}
+
+.davez-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.davez-desc {
+  margin-top: 0.2rem;
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.davez-desc,
+.davez-after {
+  color: var(--ink);
+}
+
+.davez-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.davez-col {
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid #c7dfd2;
+  border-radius: 0.8rem;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.davez-lbl {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.davez-num {
+  margin-top: 0.4rem;
+  color: var(--success);
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.davez-after {
+  margin-top: 0.4rem;
+  font-size: 0.88rem;
+  font-weight: 750;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.davez-state {
+  margin-top: 0.65rem;
+  padding: 0.65rem;
+  border: 1px dashed #9ccbb4;
+  border-radius: 0.75rem;
+  color: #175c3d;
+  background: rgba(255, 255, 255, 0.5);
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.davez-box.despachado {
+  border-color: #c7d5ef;
+  background: var(--route-soft);
+}
+
+.davez-box.despachado .davez-icon {
+  color: var(--route);
+  background: #d8e4fb;
+}
+
+.davez-box.despachado .davez-icon::before {
+  background: var(--route);
+  box-shadow: 0 0 0 0.18rem rgba(22, 79, 201, 0.18);
+}
+
+.davez-box.despachado .davez-title,
+.davez-box.despachado .davez-lbl,
+.davez-box.despachado .davez-num,
+.davez-box.despachado .davez-state {
+  color: var(--route);
+}
+
+.wait-note {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  border: 1px solid #c7d5ef;
+  border-radius: var(--radius-control);
+  color: #29446e;
+  background: var(--surface-soft);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.btn-success {
+  width: 100%;
+  min-height: 3.25rem;
+  margin-top: 1rem;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--success);
+  box-shadow: 0 8px 20px rgba(24, 121, 78, 0.18);
+}
+
+.btn-success:hover:not(:disabled) {
+  background: #105d3a;
+  box-shadow: 0 11px 24px rgba(24, 121, 78, 0.23);
 }
 
 .mini-link {
-  margin-top: 10px;
-  font-size: 12px;
-  color: #666;
-}
-
-.wait-note{
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(30,136,229,0.08);
-  border: 1px solid rgba(30,136,229,0.18);
-  color: #24425a;
-  font-size: 12px;
-  line-height: 1.4;
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.5;
   text-align: left;
 }
 
-.wait-pos{
-  margin: 10px auto 0;
-  max-width: 320px;
-  border-radius: 14px;
-  border: 1px solid #e6eefc;
-  background: rgba(30,136,229,0.06);
-  padding: 12px;
-  display: none;
-  text-align: left;
-}
-.wait-pos.show{ display:block; }
-.wait-pos .lbl{ font-size: 12px; font-weight: 900; opacity: .85; text-transform: uppercase; letter-spacing: .3px; color:#355; }
-.wait-pos .num{ margin-top: 4px; font-size: 34px; font-weight: 900; color:#1e88e5; line-height: 1; }
-
-.btn-success{
-  width: 100%;
-  padding: 14px;
-  border: none;
-  border-radius: 10px;
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  background: #2e7d32;
-  color: #fff;
-  margin-top: 10px;
-}
-.btn-success:disabled{ opacity: .7; cursor: not-allowed; }
-
-.davez-box{
-  margin: 12px auto 0;
-  max-width: 320px;
-  border-radius: 14px;
-  border: 1px solid rgba(46,125,50,0.25);
-  background: linear-gradient(180deg, rgba(46,125,50,0.10), rgba(46,125,50,0.04));
-  padding: 12px;
-  display: none;
-  text-align: left;
-}
-.davez-box.show{ display:block; }
-
-.davez-top{
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 10px;
-}
-.davez-icon{
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  background: rgba(46,125,50,0.14);
-  color: #2e7d32;
-  font-size: 20px;
-  flex: 0 0 auto;
-}
-.davez-title{
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: .3px;
-  text-transform: uppercase;
-  color: #1f4d23;
-  opacity: .95;
-}
-.davez-desc{
-  margin-top: 3px;
-  font-size: 12px;
-  color: #333;
-  line-height: 1.35;
-  opacity: .85;
-}
-
-.davez-grid{
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.davez-col{
-  background: rgba(255,255,255,0.78);
-  border: 1px solid rgba(46,125,50,0.18);
-  border-radius: 12px;
-  padding: 10px;
-}
-
-.davez-lbl{
-  font-size: 11px;
-  font-weight: 900;
-  opacity: .85;
-  text-transform: uppercase;
-  letter-spacing: .3px;
-  color: #1f4d23;
-}
-
-.davez-num{
-  margin-top: 6px;
-  font-size: 28px;
-  font-weight: 900;
-  color: #2e7d32;
-  line-height: 1;
-}
-
-.davez-after{
-  margin-top: 6px;
-  font-size: 14px;
-  font-weight: 900;
-  color: #111;
-  line-height: 1.2;
-  word-break: break-word;
-}
-
-.davez-state{
-  margin-top: 10px;
-  padding: 10px;
-  border-radius: 12px;
-  border: 1px dashed rgba(46,125,50,0.35);
-  background: rgba(46,125,50,0.06);
-  font-size: 13px;
-  font-weight: 900;
-  color: #1f4d23;
-}
-
-.davez-box.despachado{
-  border-color: rgba(30,136,229,0.25);
-  background: linear-gradient(180deg, rgba(30,136,229,0.10), rgba(30,136,229,0.04));
-}
-.davez-box.despachado .davez-icon{
-  background: rgba(30,136,229,0.14);
-  color: #1e88e5;
-}
-.davez-box.despachado .davez-title,
-.davez-box.despachado .davez-lbl{
-  color: #1e88e5;
-}
-.davez-box.despachado .davez-num{
-  color: #1e88e5;
-}
-.davez-box.despachado .davez-state{
-  border-color: rgba(30,136,229,0.35);
-  background: rgba(30,136,229,0.06);
-  color: #1e88e5;
-}
-
-/* ===== Botão flutuante atualizar ===== */
-.fab-refresh{
+.fab-refresh {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 9998;
-
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: var(--z-floating);
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-
+  gap: 0.6rem;
   width: auto;
-  padding: 12px 14px;
-  border: none;
-  border-radius: 999px;
-
-  background: rgba(17, 17, 17, 0.92);
+  min-height: 3rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 0.9rem;
   color: #fff;
-  box-shadow: 0 10px 28px rgba(0,0,0,0.22);
-  backdrop-filter: blur(6px);
-
-  font-size: 14px;
-  font-weight: 800;
+  background: rgba(11, 24, 56, 0.93);
+  box-shadow: 0 12px 30px rgba(11, 24, 56, 0.22);
+  backdrop-filter: blur(0.7rem);
+  font-size: 0.86rem;
   line-height: 1;
-  cursor: pointer;
-
-  transition: transform .18s ease, opacity .18s ease, box-shadow .18s ease, background .18s ease;
-  -webkit-tap-highlight-color: transparent;
 }
 
-.fab-refresh:hover{
-  transform: translateY(-1px);
-  box-shadow: 0 14px 34px rgba(0,0,0,0.26);
-  background: rgba(17, 17, 17, 0.98);
+.fab-refresh:hover:not(:disabled) {
+  background: var(--ink);
 }
 
-.fab-refresh:active{
-  transform: translateY(0);
-}
-
-.fab-refresh:disabled{
-  opacity: .72;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.fab-refresh-icon{
-  width: 22px;
-  height: 22px;
+.fab-refresh-icon {
   display: inline-grid;
   place-items: center;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.12);
-  font-size: 15px;
-  font-weight: 900;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 0.88rem;
+  font-weight: 800;
 }
 
-.fab-refresh-text{
+.fab-refresh-text {
   white-space: nowrap;
 }
 
-@media (max-width: 520px){
-  .fab-refresh{
-    right: 14px;
-    bottom: 14px;
-    padding: 12px 13px;
+[hidden] {
+  display: none !important;
+}
+
+@keyframes surface-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(1.25rem) scale(0.985);
   }
 
-  .fab-refresh-text{
-    font-size: 13px;
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 23.75rem) {
+  .container {
+    padding-inline: 0.75rem;
+  }
+
+  .card {
+    padding: 1.1rem;
+    border-radius: 1.35rem;
+  }
+
+  .card-shell {
+    padding: 0.3rem;
+    border-radius: 1.65rem;
+  }
+
+  .davez-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .modal-actions .btn {
+    width: 100%;
+  }
+
+  .fab-refresh-text {
+    display: none;
+  }
+}
+
+@media (min-width: 48rem) {
+  .card {
+    padding: 2.25rem;
+  }
+
+  .logo-top {
+    margin-bottom: 1.5rem;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #07101f;
+    --canvas-deep: #0e192b;
+    --surface: #101a2b;
+    --surface-soft: #152137;
+    --ink: #f3f7ff;
+    --muted: #aab5c8;
+    --line: #33425a;
+    --route: #a9c2ff;
+    --route-strong: #d1ddff;
+    --route-soft: #172b52;
+    --locator: #ff9c42;
+    --success: #70d5aa;
+    --success-soft: #15372b;
+    --warning: #ffc36e;
+    --warning-soft: #3d2b13;
+    --danger: #ff919d;
+    --danger-soft: #461c25;
+    --shadow: 0 20px 58px rgba(0, 0, 0, 0.28);
+    --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.2);
+  }
+
+  body {
+    background:
+      radial-gradient(circle at 12% 8%, rgba(64, 105, 203, 0.2), transparent 31rem),
+      radial-gradient(circle at 92% 88%, rgba(230, 107, 0, 0.1), transparent 26rem),
+      var(--canvas);
+  }
+
+  body::before {
+    background-image:
+      linear-gradient(rgba(214, 225, 245, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(214, 225, 245, 0.04) 1px, transparent 1px);
+  }
+
+  .card-shell {
+    border-color: rgba(214, 225, 245, 0.09);
+    background: rgba(255, 255, 255, 0.035);
+  }
+
+  .card {
+    border-color: rgba(214, 225, 245, 0.08);
+    background: rgba(16, 26, 43, 0.97);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), var(--shadow-soft);
+  }
+
+  .logo-top {
+    display: inline-flex;
+    padding: 0.45rem 0.7rem;
+    border-radius: 0.8rem;
+    background: #f8faff;
+  }
+
+  input {
+    border-color: #46566f;
+    color: var(--ink);
+    background: #111d30;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.24);
+  }
+
+  input::placeholder {
+    color: #8f9caf;
+  }
+
+  input:hover {
+    border-color: #6a7b95;
+  }
+
+  button,
+  .btn.primary,
+  #btn {
+    color: #fff;
+    background: #3262d4;
+  }
+
+  button:hover:not(:disabled),
+  .btn.primary:hover:not(:disabled),
+  #btn:hover:not(:disabled) {
+    color: #fff;
+    background: #244da8;
+  }
+
+  .pwa-btn,
+  .pwa-btn.ios {
+    color: #c8d7ff;
+    background: #1a315e;
+  }
+
+  .pwa-btn:hover:not(:disabled),
+  .pwa-btn.ios:hover:not(:disabled) {
+    color: #fff;
+    background: #244da8;
+  }
+
+  .btn-success {
+    color: #07101f;
+    background: #70d5aa;
+  }
+
+  .btn-success:hover:not(:disabled) {
+    color: #07101f;
+    background: #53b88e;
+  }
+
+  .app-state[data-state="offline"] {
+    border-color: #6d4b20;
+    color: #ffd092;
+    background: var(--warning-soft);
+  }
+
+  .app-state[data-state="update"] {
+    border-color: #35588f;
+    color: #c8d7ff;
+    background: var(--route-soft);
+  }
+
+  .app-state[data-state="error"] {
+    border-color: #71303b;
+    color: #ffb4bd;
+    background: var(--danger-soft);
+  }
+
+  .app-state[data-state="ready"] {
+    border-color: #2b664e;
+    color: #9ce5c2;
+    background: var(--success-soft);
+  }
+
+  .modal {
+    border-color: rgba(214, 225, 245, 0.1);
+    background: var(--surface);
+  }
+
+  .modal-actions {
+    border-color: #2b3a51;
+    background: var(--surface-soft);
+  }
+
+  .btn.ghost {
+    color: var(--ink);
+    background: #26344b;
+  }
+
+  .pos-label,
+  .wait-pos .lbl {
+    color: #bed0f8;
+  }
+
+  .davez-col {
+    border-color: #2e614c;
+    background: rgba(8, 29, 22, 0.66);
+  }
+
+  .davez-title,
+  .davez-lbl,
+  .davez-state {
+    color: #9ce5c2;
+  }
+
+  .davez-state {
+    border-color: #39755b;
+    background: rgba(8, 29, 22, 0.5);
+  }
+
+  .wait-note {
+    border-color: #35527e;
+    color: #c2d1ec;
+    background: #14223a;
+  }
+
+  .fab-refresh {
+    border-color: rgba(214, 225, 245, 0.14);
+    background: rgba(7, 16, 31, 0.94);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .card,
+  .status,
+  .app-state,
+  .pwa-box,
+  .wait-pos,
+  .davez-box {
+    border: 1px solid CanvasText;
   }
 }
 </style>
 </head>
 
 <body>
-<div class="container">
-  <div class="card">
+<a class="skip-link" href="#conteudo-principal">Ir para o conteúdo</a>
+<main id="conteudo-principal" class="container" tabindex="-1">
+  <div class="card-shell">
+  <article class="card" aria-labelledby="pageTitle">
 
-      <div class="logo-top">
-  <img src="img/logo.png" alt="Davez">
-</div>
+    <div class="logo-top">
+      <img src="img/logo.png" alt="DaVez">
+    </div>
 
-    <div id="formBox">
-      <h2>Chamada de Motoboys</h2>
-
-      <input id="nome" placeholder="Seu nome" autocomplete="name" />
-      <input id="token" placeholder="Token do dia" inputmode="text" autocomplete="one-time-code" />
-
-      <button id="btn" onclick="checkin()">Fazer Check-In</button>
-
-      <div id="status" class="status"></div>
-      <div class="small">Mantenha o GPS ligado. A localização usa alta precisão.</div>
-
-      <!-- ===== PWA UI ===== -->
-      <div id="pwaBox" class="pwa-box">
-        <div class="pwa-title">Instalar aplicativo</div>
-        <div id="pwaText" class="pwa-text">Você pode instalar este sistema na tela inicial do celular para abrir como app.</div>
-        <button id="btnInstalarApp" class="pwa-btn" type="button" style="display:none;">Instalar aplicativo</button>
-        <button id="btnInstalarIOS" class="pwa-btn ios" type="button" style="display:none;">Ver como instalar no iPhone</button>
+    <div id="appState" class="app-state" role="status" aria-live="polite" aria-atomic="true" hidden>
+      <span class="app-state-dot" aria-hidden="true"></span>
+      <div class="app-state-content">
+        <span id="appStateText"></span>
+        <button id="btnApplyUpdate" class="app-state-action" type="button">Atualizar agora</button>
       </div>
     </div>
 
-    <div id="waitBox" class="wait-box">
+    <section id="formBox" aria-labelledby="pageTitle">
+      <p class="eyebrow">Fila operacional</p>
+      <h1 id="pageTitle">Seu check-in começa aqui</h1>
+      <p class="lead">Informe seus dados do turno. Vamos confirmar sua localização antes de registrar sua chegada.</p>
+
+      <div class="field">
+        <label for="nome">Seu nome</label>
+        <input
+          id="nome"
+          name="nome"
+          type="text"
+          placeholder="Como você está cadastrado"
+          autocomplete="name"
+          maxlength="120"
+          aria-describedby="nomeHint"
+          required
+        />
+        <span id="nomeHint" class="field-hint">Use o mesmo nome informado à equipe responsável pelo turno.</span>
+      </div>
+
+      <div class="field">
+        <label for="token">Token do turno</label>
+        <input
+          id="token"
+          name="token"
+          type="text"
+          placeholder="Digite o token recebido"
+          inputmode="text"
+          autocomplete="one-time-code"
+          maxlength="120"
+          aria-describedby="tokenHint"
+          required
+        />
+        <span id="tokenHint" class="field-hint">O token identifica a chamada ativa e muda conforme o ciclo.</span>
+      </div>
+
+      <button id="btn" type="button" onclick="checkin()" aria-describedby="geoHint">Fazer check-in</button>
+
+      <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
+      <p id="geoHint" class="small">Mantenha o GPS ligado. Usamos sua localização somente para validar a chegada.</p>
+
+      <!-- ===== PWA UI ===== -->
+      <aside id="pwaBox" class="pwa-box" aria-labelledby="pwaTitle">
+        <div id="pwaTitle" class="pwa-title">Acesso rápido no celular</div>
+        <div id="pwaText" class="pwa-text" aria-live="polite">Instale a DaVez na tela inicial para abrir a fila como aplicativo.</div>
+        <button id="btnInstalarApp" class="pwa-btn" type="button" hidden>Instalar DaVez</button>
+        <button id="btnInstalarIOS" class="pwa-btn ios" type="button" hidden>Como instalar no iPhone</button>
+      </aside>
+    </section>
+
+    <section id="waitBox" class="wait-box" aria-labelledby="waitTitle">
       <div class="wait-header">
-        <div class="wait-icon">⏳</div>
+        <div class="wait-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M12 7v5l3 2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="12" cy="12" r="8.5" stroke-width="1.8"/>
+          </svg>
+        </div>
         <div class="wait-headtext">
-          <p class="wait-title">Check-in realizado</p>
-          <p class="wait-text" id="waitText">Seu check-in foi registrado. Agora é só aguardar sua vez.</p>
+          <p id="waitTitle" class="wait-title">Check-in realizado</p>
+          <p class="wait-text" id="waitText" aria-live="polite">Seu check-in foi registrado. Agora é só aguardar sua vez.</p>
         </div>
       </div>
 
-      <div id="waitPos" class="wait-pos">
+      <div id="waitPos" class="wait-pos" role="status" aria-live="polite">
         <div class="lbl">Sua posição na lista (fechamento)</div>
         <div class="num" id="waitPosNum">--</div>
       </div>
 
-      <div id="davezBox" class="davez-box">
+      <div id="davezBox" class="davez-box" aria-labelledby="davezTitle">
         <div class="davez-top">
-          <div class="davez-icon">🟢</div>
+          <div class="davez-icon" aria-hidden="true"></div>
           <div>
-            <div class="davez-title">Fila DA VEZ (estou na loja)</div>
-            <div class="davez-desc">Essa fila é diferente da lista de fechamento. Só vale quando você está na loja.</div>
+            <div id="davezTitle" class="davez-title">Fila DaVez na loja</div>
+            <div class="davez-desc">Esta fila é diferente da lista de fechamento e só vale enquanto você está na loja.</div>
           </div>
         </div>
 
@@ -594,23 +1303,32 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
           </div>
         </div>
 
-        <div class="davez-state" id="davezState">Status: aguardando</div>
+        <div class="davez-state" id="davezState" role="status" aria-live="polite">Status: aguardando</div>
       </div>
 
       <div class="wait-note" id="waitReminder">
-        Quando voltar de uma entrega, não esqueça de clicar em <b>Estou na loja</b> para entrar na fila da vez novamente.
+        Quando voltar de uma entrega, selecione <strong>Estou na loja</strong> para entrar novamente na fila DaVez.
       </div>
 
-      <button id="btnDaVez2" class="btn-success" onclick="entrarDaVez(true)">Estou na loja</button>
+      <button id="btnDaVez2" class="btn-success" type="button" onclick="entrarDaVez(true)">Estou na loja</button>
 
-      <div class="mini-link">Se estiver testando e precisa tentar de novo, peça para o admin limpar a lista do ciclo atual.</div>
-    </div>
+      <p class="mini-link">Se precisar corrigir um check-in, fale com a equipe responsável pelo turno.</p>
+    </section>
 
+  </article>
   </div>
-</div>
+</main>
 
-<div id="modalOverlay" class="modal-overlay" role="dialog" aria-modal="true">
-  <div class="modal">
+<div id="modalOverlay" class="modal-overlay" aria-hidden="true">
+  <div
+    id="modalDialog"
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="modalTitle"
+    aria-describedby="modalBody"
+    tabindex="-1"
+  >
     <div class="modal-header">
       <div id="modalBadge" class="badge info">i</div>
       <div><p id="modalTitle" class="modal-title">Mensagem</p></div>
@@ -620,8 +1338,8 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   </div>
 </div>
 
-<button id="btnRefreshFloat" class="fab-refresh" type="button" onclick="atualizarSistema()" aria-label="Atualizar sistema" title="Atualizar sistema">
-  <span class="fab-refresh-icon">↻</span>
+<button id="btnRefreshFloat" class="fab-refresh" type="button" onclick="atualizarSistema()" aria-label="Buscar atualização do sistema" title="Buscar atualização">
+  <span class="fab-refresh-icon" aria-hidden="true">↻</span>
   <span class="fab-refresh-text">Atualizar</span>
 </button>
 
@@ -647,14 +1365,16 @@ function operationalDayKey() {
   return `${ref.getFullYear()}-${String(ref.getMonth()+1).padStart(2,'0')}-${String(ref.getDate()).padStart(2,'0')}`;
 }
 
-function setStatus(msg) {
+function setStatus(msg, tone = "info") {
   const el = document.getElementById("status");
   el.textContent = msg;
+  el.dataset.tone = tone;
   el.classList.add("show");
 }
 function clearStatus() {
   const el = document.getElementById("status");
   el.textContent = "";
+  delete el.dataset.tone;
   el.classList.remove("show");
 }
 
@@ -764,21 +1484,33 @@ async function syncTokenCycleCache(){
   } catch(e){}
 }
 
-/* ===== Modal ===== */
+/* ===== Modal acessível ===== */
+let lastModalFocus = null;
+
+function getModalFocusableElements() {
+  const dialog = document.getElementById("modalDialog");
+  if (!dialog) return [];
+
+  return Array.from(dialog.querySelectorAll(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )).filter(el => !el.hidden && el.offsetParent !== null);
+}
+
 function showModal({ type="info", title="Mensagem", message="", position=null, actions=[{label:"OK"}] }) {
   const overlay = document.getElementById("modalOverlay");
+  const dialog = document.getElementById("modalDialog");
   const badge = document.getElementById("modalBadge");
   const t = document.getElementById("modalTitle");
   const body = document.getElementById("modalBody");
   const act = document.getElementById("modalActions");
 
+  lastModalFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   badge.className = "badge " + (type === "ok" ? "ok" : type === "err" ? "err" : type === "warn" ? "warn" : "info");
   badge.textContent = type === "ok" ? "✓" : type === "err" ? "!" : type === "warn" ? "!" : "i";
   t.textContent = title;
 
   body.innerHTML = "";
   const p = document.createElement("div");
-  p.style.whiteSpace = "pre-line";
   p.textContent = message || "";
   body.appendChild(p);
 
@@ -788,7 +1520,8 @@ function showModal({ type="info", title="Mensagem", message="", position=null, a
 
     const ic = document.createElement("div");
     ic.className = "pos-icon";
-    ic.textContent = "📍";
+    ic.textContent = "Nº";
+    ic.setAttribute("aria-hidden", "true");
 
     const meta = document.createElement("div");
     meta.className = "pos-meta";
@@ -827,13 +1560,57 @@ function showModal({ type="info", title="Mensagem", message="", position=null, a
   });
 
   overlay.classList.add("show");
+  overlay.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+
+  requestAnimationFrame(() => {
+    const focusable = getModalFocusableElements();
+    (focusable[0] || dialog).focus();
+  });
 }
 
 function hideModal() {
-  document.getElementById("modalOverlay").classList.remove("show");
+  const overlay = document.getElementById("modalOverlay");
+  overlay.classList.remove("show");
+  overlay.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+
+  if (lastModalFocus && document.contains(lastModalFocus)) {
+    lastModalFocus.focus();
+  }
+  lastModalFocus = null;
 }
+
 document.getElementById("modalOverlay").addEventListener("click", (e) => {
   if (e.target.id === "modalOverlay") hideModal();
+});
+
+document.getElementById("modalOverlay").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    e.preventDefault();
+    hideModal();
+    return;
+  }
+
+  if (e.key !== "Tab") return;
+
+  const focusable = getModalFocusableElements();
+  if (!focusable.length) {
+    e.preventDefault();
+    document.getElementById("modalDialog").focus();
+    return;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
 });
 
 /* ===== Pós-checkin ===== */
@@ -1041,10 +1818,10 @@ function clearDaVezState(){
 function humanStatusLabel(st){
   const s = String(st || "").toLowerCase().trim();
   if (!s) return "aguardando";
-  if (s === "em_entrega") return "EM ENTREGA (DESPACHADO) ✅";
+  if (s === "em_entrega") return "em entrega — despachado";
   if (s === "na_fila") return "na fila";
-  if (s.includes("despach")) return "DESPACHADO ✅";
-  if (s.includes("entrega")) return "EM ENTREGA ✅";
+  if (s.includes("despach")) return "despachado";
+  if (s.includes("entrega")) return "em entrega";
   if (s.includes("final")) return "finalizado";
   if (s.includes("remov")) return "removido";
   if (s.includes("cancel")) return "cancelado";
@@ -1169,29 +1946,124 @@ function startDaVezPolling(){
   startDaVezPolling();
 })();
 
-/* ===== Atualizar sistema ===== */
-async function atualizarSistema(){
+/* ===== Conectividade e atualização ===== */
+let waitingServiceWorker = null;
+let reloadAfterServiceWorkerUpdate = false;
+let appStateTimer = null;
+
+function setAppState(state, message, persist = true) {
+  const box = document.getElementById("appState");
+  const text = document.getElementById("appStateText");
+  if (!box || !text) return;
+
+  if (appStateTimer) {
+    clearTimeout(appStateTimer);
+    appStateTimer = null;
+  }
+
+  box.hidden = false;
+  box.dataset.state = state;
+  box.classList.add("show");
+  text.textContent = message;
+
+  if (!persist) {
+    appStateTimer = setTimeout(() => {
+      box.classList.remove("show");
+      box.hidden = true;
+      delete box.dataset.state;
+      text.textContent = "";
+    }, 3500);
+  }
+}
+
+function hideAppState() {
+  const box = document.getElementById("appState");
+  const text = document.getElementById("appStateText");
+  if (!box || !text) return;
+
+  box.classList.remove("show");
+  box.hidden = true;
+  delete box.dataset.state;
+  text.textContent = "";
+}
+
+function updateConnectionState() {
+  if (!navigator.onLine) {
+    setAppState("offline", "Você está sem conexão. Os dados exibidos podem estar desatualizados.");
+    return;
+  }
+
+  if (waitingServiceWorker) {
+    showServiceWorkerUpdate(waitingServiceWorker);
+    return;
+  }
+
+  const box = document.getElementById("appState");
+  if (box && box.dataset.state === "offline") {
+    setAppState("ready", "Conexão restabelecida.", false);
+  }
+}
+
+function showServiceWorkerUpdate(worker) {
+  if (!worker) return;
+  waitingServiceWorker = worker;
+  setAppState("update", "Uma versão mais recente da DaVez está pronta.");
+}
+
+function monitorServiceWorkerRegistration(registration) {
+  if (registration.waiting) {
+    showServiceWorkerUpdate(registration.waiting);
+  }
+
+  registration.addEventListener("updatefound", () => {
+    const installingWorker = registration.installing;
+    if (!installingWorker) return;
+
+    installingWorker.addEventListener("statechange", () => {
+      if (installingWorker.state === "installed" && navigator.serviceWorker.controller) {
+        showServiceWorkerUpdate(installingWorker);
+      }
+    });
+  });
+}
+
+async function atualizarSistema() {
   const btn = document.getElementById("btnRefreshFloat");
-  if (btn) btn.disabled = true;
+  const label = btn ? btn.querySelector(".fab-refresh-text") : null;
 
-  try{
-    // 1. limpa caches do Service Worker (se existir)
-    if ('caches' in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map(k => caches.delete(k)));
+  if (btn) {
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+  }
+  if (label) label.textContent = "Verificando";
+
+  try {
+    if (!("serviceWorker" in navigator)) {
+      window.location.reload();
+      return;
     }
 
-    // 2. tenta atualizar o service worker
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ action: 'skipWaiting' });
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) {
+      window.location.reload();
+      return;
     }
 
-    // 3. recarrega ignorando cache (modo hard reload)
-    window.location.href = window.location.pathname + "?v=" + Date.now();
+    await registration.update();
 
-  } catch(e){
-    // claro que pode dar erro, nada nessa vida é simples
-    window.location.reload(true);
+    if (registration.waiting) {
+      showServiceWorkerUpdate(registration.waiting);
+    } else {
+      setAppState("ready", "Você já está usando a versão mais recente.", false);
+    }
+  } catch (error) {
+    setAppState("error", "Não foi possível verificar atualizações. Tente novamente quando a conexão estiver estável.");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.removeAttribute("aria-busy");
+    }
+    if (label) label.textContent = "Atualizar";
   }
 }
 /* ===== Geoloc ===== */
@@ -1482,7 +2354,8 @@ async function checkin() {
   saveAuth(nome, token);
 
   btn.disabled = true;
-  btn.textContent = "Aguarde...";
+  btn.setAttribute("aria-busy", "true");
+  btn.textContent = "Confirmando localização…";
   setStatus("Pegando localização (alta precisão)…");
 
   try {
@@ -1558,7 +2431,8 @@ async function checkin() {
     });
   } finally {
     btn.disabled = false;
-    btn.textContent = "Fazer Check-In";
+    btn.removeAttribute("aria-busy");
+    btn.textContent = "Fazer check-in";
   }
 }
 
@@ -1566,7 +2440,8 @@ async function checkin() {
 let deferredPrompt = null;
 
 function isIOS() {
-  return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+  return /iphone|ipad|ipod/i.test(window.navigator.userAgent) ||
+    (window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1);
 }
 
 function isInStandaloneMode() {
@@ -1581,23 +2456,29 @@ function setupPWAInstallUI() {
 
   if (!pwaBox || !pwaText || !btnInstall || !btnIOS) return;
 
+  pwaBox.classList.remove("show");
+  btnInstall.hidden = true;
+  btnIOS.hidden = true;
+
   if (isInStandaloneMode()) {
-    pwaBox.classList.remove("show");
     return;
   }
 
-  pwaBox.classList.add("show");
-
   if (isIOS()) {
-    btnIOS.style.display = "block";
-    pwaText.textContent = "No iPhone, abra no Safari e use Compartilhar > Adicionar à Tela de Início.";
-    btnIOS.addEventListener("click", () => {
+    pwaBox.classList.add("show");
+    btnIOS.hidden = false;
+    pwaText.textContent = "No iPhone ou iPad, abra no Safari e adicione a DaVez à Tela de Início.";
+
+    if (btnIOS.dataset.bound !== "true") {
+      btnIOS.dataset.bound = "true";
+      btnIOS.addEventListener("click", () => {
       showModal({
         type: "info",
         title: "Instalar no iPhone",
         message: "Para instalar no iPhone:\n\n1. Abra este site no Safari\n2. Toque em Compartilhar\n3. Toque em 'Adicionar à Tela de Início'\n4. Confirme em 'Adicionar'"
       });
-    });
+      });
+    }
   }
 }
 
@@ -1612,12 +2493,13 @@ window.addEventListener("beforeinstallprompt", (e) => {
     pwaBox.classList.add("show");
   }
   if (btnInstall) {
-    btnInstall.style.display = "block";
+    btnInstall.hidden = false;
   }
 });
 
 document.addEventListener("DOMContentLoaded", () => {
   setupPWAInstallUI();
+  updateConnectionState();
 
   const btnInstall = document.getElementById("btnInstalarApp");
   if (btnInstall) {
@@ -1631,31 +2513,77 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      deferredPrompt.prompt();
-      await deferredPrompt.userChoice;
+      btnInstall.disabled = true;
+      btnInstall.setAttribute("aria-busy", "true");
+
+      await deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
       deferredPrompt = null;
-      btnInstall.style.display = "none";
+      btnInstall.disabled = false;
+      btnInstall.removeAttribute("aria-busy");
+
+      if (choice.outcome === "accepted") {
+        btnInstall.hidden = true;
+      } else {
+        document.getElementById("pwaText").textContent = "A instalação foi cancelada. Você pode tentar novamente pelo menu do navegador.";
+      }
+    });
+  }
+
+  const btnApplyUpdate = document.getElementById("btnApplyUpdate");
+  if (btnApplyUpdate) {
+    btnApplyUpdate.addEventListener("click", async () => {
+      if (!waitingServiceWorker) {
+        await atualizarSistema();
+        return;
+      }
+
+      btnApplyUpdate.disabled = true;
+      btnApplyUpdate.setAttribute("aria-busy", "true");
+      btnApplyUpdate.textContent = "Aplicando…";
+      reloadAfterServiceWorkerUpdate = true;
+      waitingServiceWorker.postMessage({ action: "skipWaiting" });
+
+      setTimeout(() => {
+        if (!reloadAfterServiceWorkerUpdate) return;
+        reloadAfterServiceWorkerUpdate = false;
+        btnApplyUpdate.disabled = false;
+        btnApplyUpdate.removeAttribute("aria-busy");
+        btnApplyUpdate.textContent = "Atualizar agora";
+        setAppState("error", "A atualização não foi aplicada. Verifique a conexão e tente novamente.");
+      }, 5000);
     });
   }
 });
 
+window.addEventListener("online", updateConnectionState);
+window.addEventListener("offline", updateConnectionState);
+
+window.addEventListener("appinstalled", () => {
+  deferredPrompt = null;
+  const pwaBox = document.getElementById("pwaBox");
+  if (pwaBox) pwaBox.classList.remove("show");
+  setAppState("ready", "DaVez instalada no dispositivo.", false);
+});
+
 /* ===== SERVICE WORKER ===== */
 if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!reloadAfterServiceWorkerUpdate) return;
+    reloadAfterServiceWorkerUpdate = false;
+    window.location.reload();
+  });
+
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/service-worker.js")
       .then(reg => {
-        console.log("Service Worker registrado com sucesso:", reg.scope);
+        monitorServiceWorkerRegistration(reg);
       })
-      .catch(err => {
-        console.error("Erro ao registrar o Service Worker:", err);
+      .catch(() => {
+        setAppState("error", "Não foi possível ativar o modo aplicativo. O check-in continua disponível no navegador.");
       });
   });
 }
-
-console.log("checkin:", typeof checkin);
-console.log("entrarDaVez:", typeof entrarDaVez);
-console.log("atualizarSistema:", typeof atualizarSistema);
-console.log("syncTokenCycleCache:", typeof syncTokenCycleCache);
 </script>
 </body>
 </html>

@@ -1,41 +1,16 @@
 <?php
+require_once __DIR__ . '/../src/Security/Bootstrap.php';
+require_once __DIR__ . '/../src/Domain/OperationalCycle.php';
+require_once __DIR__ . '/../src/Domain/OperationalContext.php';
+davez_install_safe_exception_handler();
+davez_require_http_method('GET');
 include_once __DIR__ . "/../config.php";
-header('Content-Type: application/json; charset=utf-8');
 
 date_default_timezone_set('America/Sao_Paulo');
-
-function get_operational_date(?DateTime $ref = null){
-  $tz = new DateTimeZone('America/Sao_Paulo');
-  $now = $ref ? clone $ref : new DateTime('now', $tz);
-
-  $start = clone $now;
-  $start->setTime(6, 0, 0);
-
-  if ((int)$now->format('H') < 6) {
-    $start->modify('-1 day');
-  }
-
-  return $start->format('Y-m-d');
-}
-
-$tb = $conn->query("SHOW TABLES LIKE 'fila_da_vez'");
-if (!$tb || $tb->num_rows === 0) {
-  http_response_code(500);
-  echo json_encode([
-    "ok"=>false,
-    "err"=>"Tabela fila_da_vez não existe. Rode o SQL de instalação."
-  ], JSON_UNESCAPED_UNICODE);
-  exit;
-}
-
-// garante coluna ordem se a tabela já existia antes
-$colCheck = $conn->query("SHOW COLUMNS FROM fila_da_vez LIKE 'ordem'");
-if ($colCheck && $colCheck->num_rows === 0) {
-  $conn->query("ALTER TABLE fila_da_vez ADD COLUMN ordem INT NOT NULL DEFAULT 0 AFTER entered_at");
-  $conn->query("ALTER TABLE fila_da_vez ADD INDEX idx_dia_ordem (dia, ordem)");
-}
-
-$dia = get_operational_date();
+$operationalContext = new \DaVez\Domain\OperationalContext(
+  new \DaVez\Domain\OperationalCycle()
+);
+$dia = $operationalContext->date();
 
 $stmt = $conn->prepare("
   SELECT id, client_id, nome, entered_at, status, last_action_at, ordem
@@ -48,17 +23,22 @@ $stmt = $conn->prepare("
 ");
 
 if (!$stmt) {
-  http_response_code(500);
-  echo json_encode([
-    "ok" => false,
-    "err" => "Erro no prepare do listar.php",
-    "sql_error" => $conn->error
-  ], JSON_UNESCAPED_UNICODE);
-  exit;
+  davez_send_error(
+    'queue_unavailable',
+    'Fila temporariamente indisponível.',
+    500
+  );
 }
 
 $stmt->bind_param("s", $dia);
-$stmt->execute();
+if (!$stmt->execute()) {
+  $stmt->close();
+  davez_send_error(
+    'queue_unavailable',
+    'Fila temporariamente indisponível.',
+    500
+  );
+}
 $res = $stmt->get_result();
 
 $fila = [];
@@ -75,9 +55,9 @@ foreach($fila as $r){
   }
 }
 
-echo json_encode([
+davez_send_json([
   "ok" => true,
   "dia" => $dia,
   "da_vez" => $daVez,
   "fila" => $fila
-], JSON_UNESCAPED_UNICODE);
+]);

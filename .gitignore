@@ -26,6 +26,7 @@
 /vendor/
 /node_modules/
 /coverage/
+/artifacts/
 /.phpunit.cache/
 /.phpunit.result.cache
 

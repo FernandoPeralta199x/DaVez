@@ -17,7 +17,7 @@ function request(path, options = {}) {
   };
 }
 
-assert.equal(CACHE_NAME, "motoboys-static-v2");
+assert.equal(CACHE_NAME, "motoboys-static-v3");
 
 for (const assetPath of STATIC_ASSET_PATHS) {
   assert.equal(
@@ -93,6 +93,7 @@ async function testFetchEventBoundary() {
     keys: async () => [
       "motoboys-pwa-v1",
       "motoboys-static-v2",
+      "motoboys-static-v3",
       "cache-de-outra-aplicacao",
     ],
     delete: async cacheName => {
@@ -136,7 +137,7 @@ async function testFetchEventBoundary() {
   await activation;
   assert.deepEqual(
     deletedCaches,
-    ["motoboys-pwa-v1"],
+    ["motoboys-pwa-v1", "motoboys-static-v2"],
     "a ativação deve remover o cache antigo sem apagar caches alheios"
   );
   assert.equal(

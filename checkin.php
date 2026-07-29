@@ -1,4 +1,11 @@
 <?php
+require_once __DIR__ . '/src/Security/Bootstrap.php';
+require_once __DIR__ . '/src/Domain/OperationalCycle.php';
+require_once __DIR__ . '/src/Domain/OperationalContext.php';
+require_once __DIR__ . '/src/Domain/Geofence.php';
+require_once __DIR__ . '/src/Database/bootstrap.php';
+davez_install_safe_exception_handler();
+
 // ===== Warm-up para InfinityFree (GET) =====
 // Quando o provedor aplica challenge, ele costuma redirecionar para GET.
 // Então: se não for POST, devolve uma página que volta pro index.
@@ -12,11 +19,54 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
   exit;
 }
 
+davez_require_http_method('POST');
+davez_require_public_request_context();
+
+try {
+  davez_assert_allowed_input_keys(
+    $_POST,
+    ['nome', 'token', 'lat', 'lng', 'client_id']
+  );
+  $checkinRate = davez_rate_limit_consume(
+    'public-checkin',
+    davez_rate_limit_request_subject(),
+    10,
+    60
+  );
+} catch (InvalidArgumentException $exception) {
+  davez_send_error(
+    'invalid_request',
+    'Dados de check-in inválidos.',
+    400
+  );
+} catch (RuntimeException $exception) {
+  davez_send_error(
+    'security_control_unavailable',
+    'Serviço temporariamente indisponível.',
+    503
+  );
+}
+
+if (!$checkinRate['allowed']) {
+  header('Retry-After: ' . $checkinRate['retry_after']);
+  davez_send_error(
+    'rate_limit_exceeded',
+    'Muitas tentativas. Aguarde e tente novamente.',
+    429
+  );
+}
+
 include "config.php";
 include "log.php";
 
 @date_default_timezone_set('America/Sao_Paulo');
 $conn->query("SET time_zone = '-03:00'");
+$operationalContext = new \DaVez\Domain\OperationalContext(
+  new \DaVez\Domain\OperationalCycle()
+);
+$operationalStart = $operationalContext->startSql();
+$operationalEnd = $operationalContext->endSql();
+$operationalDate = $operationalContext->date();
 
 header('Content-Type: text/plain; charset=utf-8');
 
@@ -36,17 +86,23 @@ register_shutdown_function(function () {
 
 log_event("CHECKIN_START");
 
-$nome     = trim($_POST['nome'] ?? '');
-$token    = trim($_POST['token'] ?? '');
-$lat      = floatval($_POST['lat'] ?? 0);
-$lng      = floatval($_POST['lng'] ?? 0);
-$clientId = $_POST['client_id'] ?? ($_COOKIE['cid'] ?? '');
-
-if ($nome === '') {
+try {
+  $nome = davez_input_string($_POST, 'nome', 2, 80);
+  $token = davez_input_string($_POST, 'token', 1, 32);
+  $lat = davez_input_float($_POST, 'lat', -90, 90);
+  $lng = davez_input_float($_POST, 'lng', -180, 180);
+} catch (InvalidArgumentException $exception) {
   log_event("ERRO_NOME_VAZIO");
-  http_response_code(400);
-  die("Informe seu nome");
+  davez_send_error(
+    'invalid_checkin_data',
+    'Confira nome, token e localização.',
+    400
+  );
 }
+
+$clientId = is_string($_POST['client_id'] ?? null)
+  ? trim($_POST['client_id'])
+  : (is_string($_COOKIE['cid'] ?? null) ? $_COOKIE['cid'] : '');
 
 $sRes = $conn->query("SELECT * FROM settings WHERE id=1");
 if (!$sRes) {
@@ -88,7 +144,7 @@ if ($token !== $s['token']) {
 log_event("TOKEN_OK");
 
 if (!preg_match('/^[a-f0-9]{32}$/', $clientId)) {
-  $clientId = md5(uniqid('', true));
+  $clientId = \DaVez\Domain\LegacyIdentity::clientId();
   log_event("CID_GERADO");
 } else {
   log_event("CID_OK");
@@ -97,7 +153,7 @@ if (!preg_match('/^[a-f0-9]{32}$/', $clientId)) {
 setcookie('cid', $clientId, [
   'expires' => time() + 60 * 60 * 24 * 30,
   'path' => '/',
-  'secure' => isset($_SERVER['HTTPS']),
+  'secure' => davez_is_https_request(),
   'httponly' => true,
   'samesite' => 'Lax'
 ]);
@@ -112,199 +168,208 @@ $latBase = floatval($s['lat_base']);
 $lngBase = floatval($s['lng_base']);
 $raio    = floatval($s['raio']);
 
-$dist = sqrt(
-  pow($lat - $latBase, 2) +
-  pow($lng - $lngBase, 2)
-) * 111000;
+try {
+  $geofence = \DaVez\Domain\Geofence::evaluate(
+    $latBase,
+    $lngBase,
+    $raio,
+    $lat,
+    $lng
+  );
+} catch (InvalidArgumentException $exception) {
+  log_event("ERRO_GEOFENCE_CONFIG");
+  davez_send_error(
+    'geofence_unavailable',
+    'Validação de localização temporariamente indisponível.',
+    503
+  );
+}
 
 log_event("DIST_OK", [
-  "distancia_m" => $dist,
+  "distancia_m" => $geofence['distance_m'],
   "raio_m" => $raio
 ]);
 
-if ($dist > $raio) {
-  log_event("ERRO_FORA_DO_RAIO", ["distancia_m" => $dist, "raio_m" => $raio]);
+if (!$geofence['within']) {
+  log_event("ERRO_FORA_DO_RAIO", [
+    "distancia_m" => $geofence['distance_m'],
+    "raio_m" => $raio
+  ]);
   http_response_code(403);
   die("Você não está no local");
-}
-
-/* ===== RANGE DO DIA (rápido e usa índice) ===== */
-$ver = $conn->prepare(
-  "SELECT id FROM checkins
-   WHERE client_id=?
-     AND data_hora >= CURDATE()
-     AND data_hora < (CURDATE() + INTERVAL 1 DAY)
-   LIMIT 1"
-);
-
-if (!$ver) {
-  log_event("ERRO_PREP_DUPLICIDADE");
-  http_response_code(500);
-  die("Erro interno (validação)");
-}
-
-$ver->bind_param("s", $clientId);
-if (!$ver->execute()) {
-  log_event("ERRO_EXEC_DUPLICIDADE");
-  http_response_code(500);
-  die("Erro interno (validação)");
-}
-$ver->store_result();
-
-if ($ver->num_rows > 0) {
-  log_event("ERRO_DUPLICADO");
-  http_response_code(409);
-  die("Check-in já realizado hoje");
-}
-/* ===== BLOQUEIO POR NOME (evita repetir nome em aba anônima) ===== */
-$verNome = $conn->prepare(
-  "SELECT id, ordem FROM checkins
-   WHERE LOWER(TRIM(nome)) = LOWER(TRIM(?))
-     AND data_hora >= CURDATE()
-     AND data_hora < (CURDATE() + INTERVAL 1 DAY)
-   LIMIT 1"
-);
-
-if (!$verNome) {
-  log_event("ERRO_PREP_DUP_NOME");
-  http_response_code(500);
-  die("Erro interno (validação nome)");
-}
-
-$verNome->bind_param("s", $nome);
-
-if (!$verNome->execute()) {
-  log_event("ERRO_EXEC_DUP_NOME");
-  http_response_code(500);
-  die("Erro interno (validação nome)");
-}
-
-$resNome = $verNome->get_result();
-$ja = $resNome ? $resNome->fetch_assoc() : null;
-$verNome->close();
-
-if ($ja) {
-  log_event("ERRO_DUPLICADO_NOME", ["ordem" => $ja['ordem'] ?? null]);
-  http_response_code(409);
-  die("Este nome já realizou check-in hoje. Se for você, use o re-login com o mesmo nome e token.");
 }
 
 $ip = $_SERVER['REMOTE_ADDR'] ?? '';
 $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
-/*
-  ===== ORDEM AUTOMÁTICA (CORRIGIDO) =====
-  Objetivo:
-  - gravar ordem já no INSERT (não deixar 9999)
-  - evitar colisão com check-ins simultâneos
-  Estratégia:
-  - usar um lock global curto por dia (GET_LOCK)
-  - dentro do lock: pegar MAX(ordem) do dia e inserir com ordem = max + 1
-  - transação para garantir consistência
-*/
-$today = date('Y-m-d');
-$lockName = "motoboys_ordem_" . $today; // nome do lock por dia
-$gotLock = 0;
+$allocator = davez_atomic_order_allocator($conn);
 
 try {
-  // começa transação
-  if (!$conn->begin_transaction()) {
-    log_event("ERRO_BEGIN_TX");
-    throw new Exception("Erro interno (transação)");
-  }
+  $next = $allocator->allocateAndPersist(
+    'checkins:' . $operationalDate,
+    static function () use (
+      $conn,
+      $clientId,
+      $nome,
+      $operationalStart,
+      $operationalEnd
+    ): int {
+      $byClient = $conn->prepare(
+        "SELECT id
+         FROM checkins
+         WHERE client_id=?
+           AND data_hora >= ?
+           AND data_hora < ?
+         LIMIT 1"
+      );
 
-  // tenta pegar lock por até 3 segundos (não queremos travar o mundo)
-  $lk = $conn->prepare("SELECT GET_LOCK(?, 3) AS l");
-  if ($lk) {
-    $lk->bind_param("s", $lockName);
-    if ($lk->execute()) {
-      $res = $lk->get_result();
-      $row = $res ? $res->fetch_assoc() : null;
-      $gotLock = intval($row['l'] ?? 0);
+      if (!$byClient) {
+        throw new RuntimeException('Falha ao preparar duplicidade por cliente.');
+      }
+
+      $byClient->bind_param(
+        "sss",
+        $clientId,
+        $operationalStart,
+        $operationalEnd
+      );
+
+      if (!$byClient->execute()) {
+        $byClient->close();
+        throw new RuntimeException('Falha ao validar duplicidade por cliente.');
+      }
+
+      $byClient->store_result();
+      $clientExists = $byClient->num_rows > 0;
+      $byClient->close();
+
+      if ($clientExists) {
+        throw new DomainException('duplicate_client');
+      }
+
+      $byName = $conn->prepare(
+        "SELECT id
+         FROM checkins
+         WHERE LOWER(TRIM(nome)) = LOWER(TRIM(?))
+           AND data_hora >= ?
+           AND data_hora < ?
+         LIMIT 1"
+      );
+
+      if (!$byName) {
+        throw new RuntimeException('Falha ao preparar duplicidade por nome.');
+      }
+
+      $byName->bind_param(
+        "sss",
+        $nome,
+        $operationalStart,
+        $operationalEnd
+      );
+
+      if (!$byName->execute()) {
+        $byName->close();
+        throw new RuntimeException('Falha ao validar duplicidade por nome.');
+      }
+
+      $byName->store_result();
+      $nameExists = $byName->num_rows > 0;
+      $byName->close();
+
+      if ($nameExists) {
+        throw new DomainException('duplicate_name');
+      }
+
+      $maximum = $conn->prepare(
+        "SELECT COALESCE(MAX(ordem), 0)
+         FROM checkins
+         WHERE data_hora >= ?
+           AND data_hora < ?"
+      );
+
+      if (!$maximum) {
+        throw new RuntimeException('Falha ao preparar próxima ordem.');
+      }
+
+      $maximum->bind_param("ss", $operationalStart, $operationalEnd);
+
+      if (!$maximum->execute()) {
+        $maximum->close();
+        throw new RuntimeException('Falha ao consultar próxima ordem.');
+      }
+
+      $maximumOrder = 0;
+      $maximum->bind_result($maximumOrder);
+      $maximum->fetch();
+      $maximum->close();
+
+      return (int) $maximumOrder;
+    },
+    static function (int $order) use (
+      $conn,
+      $nome,
+      $clientId,
+      $ip,
+      $ua
+    ): void {
+      $statement = $conn->prepare(
+        "INSERT INTO checkins
+           (nome, client_id, ip, user_agent, data_hora, ordem)
+         VALUES (?, ?, ?, ?, NOW(), ?)"
+      );
+
+      if (!$statement) {
+        throw new RuntimeException('Falha ao preparar inserção.');
+      }
+
+      $statement->bind_param(
+        "ssssi",
+        $nome,
+        $clientId,
+        $ip,
+        $ua,
+        $order
+      );
+
+      if (!$statement->execute()) {
+        $statement->close();
+        throw new RuntimeException('Falha ao inserir check-in.');
+      }
+
+      $statement->close();
     }
-    $lk->close();
-  }
-
-  if ($gotLock !== 1) {
-    // fallback: segue sem lock (ainda funciona; risco mínimo de colisão em pico)
-    log_event("ORDEM_LOCK_FALHOU", ["got" => $gotLock]);
-  } else {
-    log_event("ORDEM_LOCK_OK", ["got" => $gotLock]);
-  }
-
-  // pega a próxima ordem do dia (se não existir, começa em 1)
-  $next = 1;
-  $q = $conn->query(
-    "SELECT COALESCE(MAX(ordem), 0) AS mx
-     FROM checkins
-     WHERE data_hora >= CURDATE()
-       AND data_hora < (CURDATE() + INTERVAL 1 DAY)"
   );
-  if ($q) {
-    $mx = intval(($q->fetch_assoc()['mx'] ?? 0));
-    $next = $mx + 1;
-  } else {
-    log_event("ERRO_MAX_ORDEM_QUERY");
-    // mantém $next=1 como fallback
+} catch (DomainException $exception) {
+  if ($exception->getMessage() === 'duplicate_client') {
+    log_event("ERRO_DUPLICADO");
+    davez_send_error(
+      'duplicate_checkin',
+      'Check-in já realizado no ciclo operacional atual.',
+      409
+    );
   }
 
-  $stmt = $conn->prepare(
-    "INSERT INTO checkins (nome, client_id, ip, user_agent, data_hora, ordem)
-     VALUES (?, ?, ?, ?, NOW(), ?)"
+  log_event("ERRO_DUPLICADO_NOME");
+  davez_send_error(
+    'duplicate_name',
+    'Este nome já realizou check-in no ciclo operacional atual.',
+    409
   );
-
-  if (!$stmt) {
-    log_event("ERRO_PREP_INSERT");
-    throw new Exception("Erro interno (inserção)");
-  }
-
-  $stmt->bind_param("ssssi", $nome, $clientId, $ip, $ua, $next);
-
-  if (!$stmt->execute()) {
-    log_event("ERRO_EXEC_INSERT");
-    $stmt->close();
-    throw new Exception("Erro ao registrar check-in");
-  }
-  $stmt->close();
-
-  // libera lock (se pegou)
-  if ($gotLock === 1) {
-    $ul = $conn->prepare("SELECT RELEASE_LOCK(?) AS r");
-    if ($ul) {
-      $ul->bind_param("s", $lockName);
-      $ul->execute();
-      $ul->close();
-    }
-  }
-
-  // commit
-  if (!$conn->commit()) {
-    log_event("ERRO_COMMIT_TX");
-    throw new Exception("Erro interno (commit)");
-  }
-
-} catch (Exception $e) {
-  // rollback
-  if ($conn && $conn->errno === 0) {
-    // ok
-  }
-  if ($conn) {
-    $conn->rollback();
-  }
-
-  // tenta liberar lock mesmo em erro
-  if ($gotLock === 1) {
-    $ul = $conn->prepare("SELECT RELEASE_LOCK(?) AS r");
-    if ($ul) {
-      $ul->bind_param("s", $lockName);
-      $ul->execute();
-      $ul->close();
-    }
-  }
-
+} catch (\DaVez\Database\LockUnavailable $exception) {
+  log_event("ORDEM_LOCK_FALHOU");
+  header('Retry-After: 2');
+  davez_send_error(
+    'queue_busy',
+    'Fila ocupada. Aguarde e tente novamente.',
+    503
+  );
+} catch (Throwable $exception) {
   log_event("ERRO_TX_ORDEM_INSERT");
-  http_response_code(500);
-  die($e->getMessage());
+  davez_send_error(
+    'checkin_failed',
+    'Não foi possível registrar o check-in.',
+    500
+  );
 }
 
 log_event("CHECKIN_OK", ["ordem" => $next]);

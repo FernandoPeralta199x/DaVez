@@ -1,13 +1,17 @@
 {
-  "name": "Lista de Chegada dos Motoboys",
-  "short_name": "Motoboys",
+  "id": "/",
+  "name": "DaVez — Fila de Motoboys",
+  "short_name": "DaVez",
+  "description": "Check-in e acompanhamento das filas operacionais de motoboys.",
   "start_url": "/index.html",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#111111",
+  "background_color": "#f4f6fa",
+  "theme_color": "#f4f6fa",
   "orientation": "portrait",
   "lang": "pt-BR",
+  "categories": ["business", "productivity"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -17,7 +21,7 @@
     },
     {
       "src": "/icons/icon-512.png",
-      "sizes": "512x512",
+      "sizes": "592x592",
       "type": "image/png",
       "purpose": "any maskable"
     }

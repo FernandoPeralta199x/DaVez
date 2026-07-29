@@ -1,4 +1,4 @@
-const CACHE_NAME = "motoboys-static-v2";
+const CACHE_NAME = "motoboys-static-v3";
 
 const STATIC_ASSET_PATHS = [
   "./index.html",

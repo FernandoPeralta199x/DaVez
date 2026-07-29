@@ -1,0 +1,44 @@
+name: Validacao
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "agent/**"
+      - "codex/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validacao-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validar:
+    name: PHP, JavaScript e politicas
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v7
+
+      - name: Preparar PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          extensions: json, mbstring, mysqli, openssl
+          tools: none
+          coverage: none
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Executar validacao integrada
+        shell: pwsh
+        run: ./scripts/validate.ps1
