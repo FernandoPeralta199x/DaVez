@@ -1,8 +1,15 @@
 # Testes
 
-Não há suíte automatizada no baseline.
+Os testes automatizados de segurança ficam em `tests/security`.
 
-Os arquivos PHP com nomes de teste presentes na raiz são scripts legados acessíveis por HTTP e não constituem testes reproduzíveis. Eles serão tratados em uma tarefa de segurança separada, depois que o baseline estiver publicado.
+## Política do artefato de produção
+
+```bash
+node tests/security/production_artifact_policy.test.js
+```
+
+O teste impede o retorno dos endpoints públicos de diagnóstico removidos no lote
+F-015.
 
 Prioridades para a futura suíte:
 
