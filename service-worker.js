@@ -1,10 +1,10 @@
-const CACHE_NAME = "motoboys-static-v3";
+const CACHE_NAME = "motoboys-static-v6";
 
 const STATIC_ASSET_PATHS = [
   "./index.html",
   "./manifest.json",
   "./icons/icon-192.png",
-  "./icons/icon-512.png",
+  "./icons/icon-512-v2.png",
   "./img/logo.png",
 ];
 
@@ -34,15 +34,22 @@ function classifyRequest(request, scopeUrl) {
     return REQUEST_STRATEGY.NETWORK_ONLY;
   }
 
-  if (request.mode === "navigate") {
-    return REQUEST_STRATEGY.NETWORK_FIRST_NAVIGATION;
-  }
-
   const requestUrl = new URL(request.url);
   const scope = new URL(scopeUrl);
 
   if (requestUrl.origin !== scope.origin) {
     return REQUEST_STRATEGY.NETWORK_ONLY;
+  }
+
+  if (request.mode === "navigate") {
+    const scopePath = scope.pathname.endsWith("/")
+      ? scope.pathname
+      : `${scope.pathname}/`;
+    const indexPath = new URL("./index.html", scope).pathname;
+
+    return requestUrl.pathname === scopePath || requestUrl.pathname === indexPath
+      ? REQUEST_STRATEGY.NETWORK_FIRST_NAVIGATION
+      : REQUEST_STRATEGY.NETWORK_ONLY;
   }
 
   const staticAssetUrls = getStaticAssetUrls(scopeUrl);
@@ -88,7 +95,6 @@ function registerServiceWorkerEvents(serviceWorkerScope) {
       caches
         .open(CACHE_NAME)
         .then(cache => cache.addAll(STATIC_ASSET_PATHS))
-        .then(() => serviceWorkerScope.skipWaiting())
     );
   });
 
@@ -133,7 +139,7 @@ function registerServiceWorkerEvents(serviceWorkerScope) {
 
   serviceWorkerScope.addEventListener("message", event => {
     if (event.data && event.data.action === "skipWaiting") {
-      serviceWorkerScope.skipWaiting();
+      event.waitUntil(serviceWorkerScope.skipWaiting());
     }
   });
 }

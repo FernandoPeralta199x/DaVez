@@ -13,6 +13,7 @@ require_once __DIR__ . '/MysqliAdvisoryLock.php';
 require_once __DIR__ . '/../Domain/LegacyIdentity.php';
 require_once __DIR__ . '/../Domain/TokenCycle.php';
 require_once __DIR__ . '/SettingsTokenCycle.php';
+require_once __DIR__ . '/PublicIdentityStore.php';
 
 if (!function_exists('davez_database_release_observer')) {
     function davez_database_release_observer(array $event): void
@@ -64,5 +65,12 @@ if (!function_exists('davez_settings_token_cycle')) {
     function davez_settings_token_cycle(mysqli $connection): \DaVez\Database\SettingsTokenCycle
     {
         return new \DaVez\Database\SettingsTokenCycle($connection);
+    }
+}
+
+if (!function_exists('davez_public_identity_store')) {
+    function davez_public_identity_store(mysqli $connection): \DaVez\Database\PublicIdentityStore
+    {
+        return new \DaVez\Database\PublicIdentityStore($connection);
     }
 }

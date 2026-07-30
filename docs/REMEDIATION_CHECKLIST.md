@@ -31,7 +31,8 @@ merge ou alteração de produção.
 
 Os principais bloqueadores são:
 
-1. identidade pública ainda baseada em token coletivo e `client_id` legado;
+1. identidade pública v2 está implementada apenas no lote local e ainda não
+   foi ativada em banco/ambiente integrado;
 2. ausência de validação com MySQL real;
 3. ausência de E2E dos fluxos completos;
 4. migrations, backup, restore e rollback ainda não executados em ambiente
@@ -72,40 +73,41 @@ Os principais bloqueadores são:
 
 Documento de arquitetura: `docs/PUBLIC_IDENTITY_V2.md`.
 
-**[Certeza]** A identidade pública v2 está planejada e não implementada.
+**[Certeza]** A identidade pública v2 está implementada localmente, mas ainda
+não foi validada em MySQL real, navegador HTTPS nem ativada.
 
 | ID | Severidade | Camada | Status | Evidência segura | Critério de aceite | Teste/validação | Dependências |
 |---|---|---|---|---|---|---|---|
-| PID2-001 | Crítico | Admissão | BLOQUEADO POR DECISÃO | `docs/PUBLIC_IDENTITY_V2.md` | Token coletivo substituído por ticket individual, descartável e de curta duração | Testes unitários e concorrentes de consumo único | DEC-PID2-03, 04, 07 e 10 |
-| PID2-002 | Crítico | Sessão pública | BLOQUEADO POR DECISÃO | Proposta de `public_sessions` no documento v2 | Token aleatório fica apenas em cookie `HttpOnly`; banco guarda hash; sessão vincula `checkin_id` | Unidade, integração e E2E de rotação/revogação | DEC-PID2-02, 06 e 09 |
-| PID2-003 | Crítico | Recuperação | BLOQUEADO POR DECISÃO | Fluxo de recovery em `docs/PUBLIC_IDENTITY_V2.md` | Lookup por nome é desativado; recuperação exige ticket individual vinculado ao check-in | `relogin.php` retorna 410 no legado; recovery revoga sessão anterior | DEC-PID2-01 e 02 |
-| PID2-004 | Alto | Frontend | PLANEJADO | Impacto sobre `index.html` documentado | Token e identidade deixam o `localStorage`; `client_id` não é gerado/enviado | Política estática e E2E em dispositivo novo/reload | Backend v2 e corte coordenado da PWA |
-| PID2-005 | Alto | Fila | PLANEJADO | Evolução proposta para `fila_da_vez.checkin_id` | Fila deriva a identidade da sessão; não aceita nome/token/client ID do request | Integração MySQL e concorrência | Migrations aditivas e PID2-002 |
-| PID2-006 | Alto | Privacidade | BLOQUEADO POR DECISÃO | Proposta para `DaVez/listar.php` | Resposta pública não contém `client_id` ou IDs internos; nomes seguem política aprovada | Teste de contrato da resposta pública | DEC-PID2-05 e 08 |
-| PID2-007 | Alto | Migração | BLOQUEADO POR DECISÃO | Plano de corte em `docs/PUBLIC_IDENTITY_V2.md` | Corte versionado no início do ciclo ou transição dual com prazo explícito | Ensaio de migration, rollback e PWA antiga | DEC-PID2-04 e 09 |
-| PID2-008 | Médio | Revogação | BLOQUEADO POR DECISÃO | Política proposta de tickets/sessões | Logout, recovery, limpeza de ciclo e abuso revogam no servidor | Testes de expiração e revogação | DEC-PID2-01, 02, 06 e 07 |
+| PID2-001 | Crítico | Admissão | PARCIAL | `checkin.php`, `PublicIdentity.php`, migration `006` | Token coletivo substituído por ticket individual, descartável e de curta duração | Unidade e contratos passaram; consumo concorrente MySQL não validado | MySQL isolado e piloto |
+| PID2-002 | Crítico | Sessão pública | PARCIAL | `public_sessions`, `PublicIdentityStore.php`, cookie opaco | Token aleatório fica apenas em cookie `HttpOnly`; banco guarda hash; sessão vincula `checkin_id` | Unidade e política estática passaram; integração/E2E pendentes | Migrations, HTTPS e MySQL |
+| PID2-003 | Crítico | Recuperação | PARCIAL | `relogin.php`, `recover.php`, emissão administrativa | Lookup por nome é desativado; recuperação exige ticket individual vinculado ao check-in | Legado retorna 410 e contrato de revogação passou; E2E pendente | MySQL e validação presencial |
+| PID2-004 | Alto | Frontend | PARCIAL | `index.html`, `service-worker.js`, testes frontend v2 | Token e identidade deixam o `localStorage`; `client_id` não é gerado/enviado | Políticas estáticas passaram; dispositivo novo/reload não validados | Corte coordenado e browser |
+| PID2-005 | Alto | Fila | PARCIAL | `DaVez/entrar.php`, migration `008`, `fila_da_vez.checkin_id` | Fila deriva a identidade da sessão; não aceita nome/token/client ID do request | Contrato estático passou; integração e concorrência MySQL pendentes | Migrations e MySQL |
+| PID2-006 | Alto | Privacidade | PARCIAL | `DaVez/listar.php`, `DaVez/listar_admin.php` | Resposta pública não contém `client_id` ou IDs internos; lista completa exige admin | Teste de contrato passou; resposta em servidor real não validada | Ambiente integrado |
+| PID2-007 | Alto | Migração | PARCIAL | Migrations aditivas `005..008` e plano de corte | Corte versionado no início do ciclo | Nenhuma migration, backup ou rollback executado | MySQL isolado e janela aprovada |
+| PID2-008 | Médio | Revogação | PARCIAL | `public_logout.php`, `recover.php`, `public_sessions` | Logout e recovery revogam no servidor; limpeza remove dependências do ciclo | Unidade/contrato passaram; MySQL e E2E pendentes | MySQL e operação integrada |
 
-### Decisões bloqueantes da identidade
+### Decisões aprovadas da identidade
 
 | ID | Status | Decisão do proprietário | Recomendação padrão | Critério para encerrar |
 |---|---|---|---|---|
-| DEC-PID2-01 | BLOQUEADO POR DECISÃO | Recuperação será apenas administrativa? | Sim, presencial, até existir conta/OTP/passkey | Decisão registrada com responsável operacional |
-| DEC-PID2-02 | BLOQUEADO POR DECISÃO | Quantos dispositivos ativos por check-in? | Um; recovery revoga o anterior | Política de sessão aprovada |
-| DEC-PID2-03 | BLOQUEADO POR DECISÃO | Ticket digitável ou QR individual? | QR individual; código individual como fallback | Processo de emissão/distribuição testado |
-| DEC-PID2-04 | BLOQUEADO POR DECISÃO | Corte de ciclo ou transição dual? | Corte no início de um ciclo | Janela e rollback aprovados |
-| DEC-PID2-05 | BLOQUEADO POR DECISÃO | Quais nomes podem aparecer publicamente? | Apenas próximo chamado e visão `me` | Política de privacidade aprovada |
-| DEC-PID2-06 | BLOQUEADO POR DECISÃO | Validade da sessão? | Até o fim do ciclo; máximo de 24 horas | Timeout documentado |
-| DEC-PID2-07 | BLOQUEADO POR DECISÃO | Validade do ticket? | 10 minutos e uso único | TTL e limites aprovados |
-| DEC-PID2-08 | BLOQUEADO POR DECISÃO | IP/User-Agent continuarão armazenados? | Remover, salvo justificativa e retenção | Base legal/finalidade/retention documentadas |
-| DEC-PID2-09 | BLOQUEADO POR DECISÃO | HTTPS está garantido? | Tornar obrigatório | Certificado, proxy e cookies validados |
-| DEC-PID2-10 | BLOQUEADO POR DECISÃO | A operação suporta ticket individual? | Validar antes do desenvolvimento | Piloto operacional aprovado |
+| DEC-PID2-01 | APROVADA | Recuperação exclusivamente administrativa/presencial | Implementada no lote local | Validar procedimento no piloto |
+| DEC-PID2-02 | APROVADA | Uma sessão ativa por check-in | Constraint e revogação implementadas | Validar concorrência MySQL |
+| DEC-PID2-03 | APROVADA | QR individual com código digitável de fallback | Código implementado; QR externo fora deste lote | Validar distribuição operacional |
+| DEC-PID2-04 | APROVADA | Corte completo no início de um ciclo | Plano documentado | Ensaiar janela e rollback |
+| DEC-PID2-05 | APROVADA | Apenas próximo chamado e visão `me` no público | Contrato implementado | Validar E2E |
+| DEC-PID2-06 | APROVADA | Até o fim do ciclo, máximo de 24 horas | Regra e unidade implementadas | Validar timezone integrado |
+| DEC-PID2-07 | APROVADA | Dez minutos e uso único | Regra, schema e unidade implementados | Validar consumo concorrente |
+| DEC-PID2-08 | APROVADA | Não persistir IP/User-Agent no check-in v2 | Inserção v2 não grava os campos | Definir destino dos dados legados |
+| DEC-PID2-09 | APROVADA | HTTPS obrigatório fora de localhost | Cookie recusa HTTP não local | Validar proxy/certificado |
+| DEC-PID2-10 | APROVADA | Piloto de emissão administrativa individual | Interface e endpoint implementados | Executar piloto controlado |
 
 ## Fase 3 — banco, migrations, domínio e concorrência
 
 | ID | Severidade | Camada | Status | Evidência segura | Critério de aceite | Teste/validação | Dependências |
 |---|---|---|---|---|---|---|---|
-| DB-001 | Alto | Schema | PARCIAL | `database/schema.sql`, migrations `001` a `004` | Banco novo é criado de forma reproduzível e compatível com a aplicação | `tests/database/schema_contract_test.php`; não aplicado a MySQL real | Preflight, backup e ambiente MySQL |
-| DB-002 | Alto | Migrations | PARCIAL | `database/migrations/001_create_settings.sql` a `004_create_reports.sql`, `docs/DATABASE_OPERATIONS.md` | Migrations executadas em banco vazio e legado, com rollback/restore ensaiados | Contrato estático disponível; execução real não validada | Dump anonimizado e autorização |
+| DB-001 | Alto | Schema | PARCIAL | `database/schema.sql`, migrations `001` a `008` | Banco novo é criado de forma reproduzível e compatível com a aplicação | Contratos de schema passaram; não aplicado a MySQL real | Preflight, backup e ambiente MySQL |
+| DB-002 | Alto | Migrations | PARCIAL | `database/migrations/001..008`, `docs/DATABASE_OPERATIONS.md` | Migrations executadas em banco vazio e legado, com rollback/restore ensaiados | Contratos estáticos disponíveis; execução real não validada | Dump anonimizado e autorização |
 | DB-003 | Alto | DDL em runtime | IMPLEMENTADO | `tests/database/runtime_data_policy_test.php`, `src/Database/` | Nenhum endpoint HTTP executa `CREATE`, `ALTER`, `SHOW TABLES` ou mudança de schema | Teste de política e busca estática passaram; MySQL real ainda não validado | Manter migrations fora do runtime |
 | DB-004 | Alto | Ciclo operacional | IMPLEMENTADO | `src/Domain/OperationalCycle.php`, `OperationalContext.php`, `tests/domain/` e endpoints integrados | Todas as rotas usam uma única regra `[06:00, 06:00)` e timezone definido | Testes unitários e política estática passaram | Validar timezone no MySQL real |
 | DB-005 | Alto | Ciclo de token | PARCIAL | `src/Domain/TokenCycle.php`, `src/Database/SettingsTokenCycle.php`, `tests/database/settings_token_cycle_cas_policy_test.php` | Regra centralizada, rotação concorrente por compare-and-set e, na v2, token coletivo removido | Domínio e contrato CAS passaram; concorrência MySQL não validada | MySQL real e identidade v2 |
@@ -122,7 +124,7 @@ Documento de arquitetura: `docs/PUBLIC_IDENTITY_V2.md`.
 |---|---|---|---|---|---|---|---|
 | LOG-001 | Alto | Logging | IMPLEMENTADO | `log.php`, `tests/security/log_event_test.php`, `logging_policy.test.js` | Tokens, nomes, coordenadas, IDs, IP/UA e erros SQL não são persistidos; métricas permitidas permanecem | Teste de integração e política passaram durante a remediação | Manter allowlist |
 | LOG-002 | Alto | Histórico | PARCIAL | Regra de preservação privada registrada; conteúdo não lido | Log/relatório histórico permanece fora do webroot e do Git, com acesso e retenção definidos | Local privado deliberadamente não inspecionado | Proprietário define retenção/descarte |
-| LOG-002A | Alto | Privacidade de dados | PARCIAL | `checkin.php`, colunas `checkins.ip` e `checkins.user_agent` em `database/schema.sql` | IP e User-Agent deixam de ser persistidos ou possuem finalidade, base legal, acesso e retenção mínima formalmente aprovados | Teste de integração MySQL deve comprovar a política escolhida; dados reais não foram inspecionados | DEC-PID2-08 e política de retenção |
+| LOG-002A | Alto | Privacidade de dados | PARCIAL | `checkin.php` v2 não grava IP/User-Agent; colunas legadas permanecem nullable | Novos check-ins v2 não persistem IP/User-Agent e dados legados recebem política de retenção | Contrato estático passou; integração MySQL e dados legados não foram inspecionados | Política de retenção |
 | LOG-003 | Alto | Caminho de runtime | IMPLEMENTADO | `APP_LOG_PATH` documentado e teste de logger | Produção aponta para diretório privado absoluto | Não validado no servidor real | Configuração externa e permissões |
 | LOG-004 | Alto | Exposição | PARCIAL | `tests/security/storage_exposure_policy.test.php`, `.gitignore` | Logs, relatórios, rate limit e backups não são servidos por HTTP | Política estática disponível; servidor real não validado | Configuração do webserver |
 | LOG-005 | Alto | Webroot | PLANEJADO | Arquitetura alvo em `docs/ARCHITECTURE.md` | Único webroot é `public/`; `src`, config, storage, docs e testes ficam fora | Teste do artefato e varredura HTTP | Refatoração incremental e deploy |
@@ -138,7 +140,7 @@ Documento de arquitetura: `docs/PUBLIC_IDENTITY_V2.md`.
 | UI-PUB-001 | Médio | Acessibilidade | PARCIAL | `index.html`, `tests/frontend/public_interface_accessibility.test.js` | Labels, foco, contraste, `aria-live`, teclado e reduced motion passam WCAG aplicável | Teste estático disponível; auditoria axe/manual não validada | Browser e dispositivos |
 | UI-PUB-002 | Médio | Responsividade | PARCIAL | `index.html` | Fluxos principais funcionam em 360, 390, 768, 1024 e 1440 px | QA em navegador passou em 360×800 e 1440×900 no lote público; demais dimensões e dispositivos reais não validados | Browser/device lab |
 | UI-PUB-003 | Médio | Estados | PARCIAL | `index.html` possui estados de conectividade/atualização | Loading, erro, vazio, offline, localização negada e sessão expirada são claros | E2E/manual não validado | Backend real e identidade v2 |
-| UI-PUB-004 | Alto | Privacidade | BLOQUEADO POR DECISÃO | `docs/PUBLIC_IDENTITY_V2.md` | Frontend não guarda token/identidade e não exibe IDs | Política estática planejada | DEC-PID2-05 e implementação v2 |
+| UI-PUB-004 | Alto | Privacidade | PARCIAL | `index.html`, `public_identity_v2_contract.test.js` | Frontend não guarda token/identidade e não exibe IDs | Política estática passou; E2E não executado | Browser e backend integrado |
 
 ## Fase 6 — painel administrativo
 
@@ -156,7 +158,7 @@ Documento de arquitetura: `docs/PUBLIC_IDENTITY_V2.md`.
 | ID | Severidade | Camada | Status | Evidência segura | Critério de aceite | Teste/validação | Dependências |
 |---|---|---|---|---|---|---|---|
 | CI-001 | Alto | CI | IMPLEMENTADO | `.github/workflows/ci.yml`, `tests/operations/ci_read_only_contract_test.php` | Workflow executa lint e testes sem ler secrets/dados ou alterar ambiente | Contrato local disponível; execução remota não comprovada | Push/PR e GitHub Actions habilitado |
-| CI-002 | Médio | Validação local | IMPLEMENTADO | `scripts/validate.ps1` | Um comando executa lint e suítes relevantes, falhando cedo | Execução combinada final passou com PHP 8.5.9, 18 testes PHP, 8 testes Node, manifesto e `git diff --check` | Repetir no commit candidato e no CI remoto |
+| CI-002 | Médio | Validação local | IMPLEMENTADO | `scripts/validate.ps1` | Um comando executa lint e suítes relevantes, falhando cedo | Execução combinada deste lote passou com PHP 8.5.9, 20 testes PHP, 11 testes Node, manifesto e `git diff --check` | Repetir no commit candidato e no CI remoto |
 | REL-001 | Alto | Artefato | IMPLEMENTADO | `scripts/build-release.ps1`, `tests/operations/release_allowlist_contract_test.php`, `production_artifact_policy.test.js` | Release usa allowlist e exclui config real, env, logs, relatórios, docs privados e testes indevidos | Contratos locais disponíveis | Inspeção do artefato gerado |
 | REL-002 | Alto | PR checks | NÃO VALIDADO | PR #1 remoto não draft, sem checks no estado observado | Branch protection exige CI verde antes de merge | Reconsulta do GitHub necessária | Configuração do repositório |
 | OPS-001 | Médio | Deploy | PARCIAL | `docs/DEPLOYMENT.md` | Deploy possui preflight, artefato, ordem, smoke test e rollback | Procedimento documentado; não executado | Staging |
@@ -177,7 +179,7 @@ Documento de arquitetura: `docs/PUBLIC_IDENTITY_V2.md`.
 | TST-004 | Alto | Banco | PARCIAL | `tests/database/` | Contratos, runtime DDL, CAS, compactação e alocação atômica passam | Todos os testes sem banco passaram na execução combinada final | MySQL real para integração |
 | TST-005 | Crítico | MySQL | NÃO VALIDADO | Nenhum banco real foi acessado nesta consolidação | Suite cria banco vazio, migra legado anonimizado e executa fluxos críticos | Ambiente MySQL isolado | Credenciais de teste e autorização |
 | TST-006 | Crítico | Concorrência real | NÃO VALIDADO | Fundação em `src/Database/` | Requisições paralelas não duplicam ordem e falham com segurança sem lock | Teste paralelo com múltiplas conexões MySQL | MySQL/InnoDB |
-| TST-007 | Crítico | E2E público | NÃO VALIDADO | Frontend e endpoints existem | Check-in, reload, re-login/410 futuro, fila, localização, erro e expiração funcionam | Playwright/browser real | MySQL, HTTPS e identidade definida |
+| TST-007 | Crítico | E2E público | NÃO VALIDADO | Frontend e endpoints v2 existem | Check-in, reload, re-login 410, recovery, fila, localização, erro e expiração funcionam | Playwright/browser real | MySQL e HTTPS |
 | TST-008 | Crítico | E2E admin | NÃO VALIDADO | Login e painel implementados | Login, CSRF, sessão expirada, toggle, limpeza, relatório, reorder e logout passam | Browser autenticado + MySQL | Ambiente integrado |
 | TST-009 | Alto | Dispositivos/PWA | NÃO VALIDADO | PWA implementada | Android/iOS, rede lenta, offline, atualização e cache antigo funcionam | Matriz de dispositivos | HTTPS e build candidato |
 | TST-010 | Crítico | Backup/restore | NÃO VALIDADO | Documentação disponível | Restore produz aplicação funcional e dados consistentes | Ensaio completo | Banco e storage isolados |
@@ -186,7 +188,7 @@ Documento de arquitetura: `docs/PUBLIC_IDENTITY_V2.md`.
 
 | ID | Status | Requisito para liberar |
 |---|---|---|
-| STG-001 | BLOQUEADO POR DECISÃO | DEC-PID2-01 a DEC-PID2-10 resolvidas ou risco legado formalmente aceito com prazo |
+| STG-001 | IMPLEMENTADO | DEC-PID2-01 a DEC-PID2-10 aprovadas em 2026-07-29 |
 | STG-002 | NÃO VALIDADO | MySQL isolado com migrations, seed sintético e integração verde |
 | STG-003 | NÃO VALIDADO | HTTPS, secrets, storage privado e permissões verificados |
 | STG-004 | NÃO VALIDADO | Backup e restore executados |
@@ -201,7 +203,7 @@ Documento de arquitetura: `docs/PUBLIC_IDENTITY_V2.md`.
 | ID | Status | Requisito para liberar |
 |---|---|---|
 | PRD-001 | NÃO VALIDADO | Todos os gates de staging concluídos |
-| PRD-002 | BLOQUEADO POR DECISÃO | Identidade pública v2 e política de privacidade aprovadas |
+| PRD-002 | IMPLEMENTADO | Identidade pública v2 e política de privacidade aprovadas; ativação ainda depende dos demais gates |
 | PRD-003 | NÃO VALIDADO | Teste de carga, concorrência e capacidade |
 | PRD-004 | NÃO VALIDADO | Backup automático e restore periódico |
 | PRD-005 | PLANEJADO | Alertas, logs sanitizados e resposta a incidente |
@@ -212,19 +214,19 @@ Documento de arquitetura: `docs/PUBLIC_IDENTITY_V2.md`.
 
 ## Ordem recomendada dos próximos lotes
 
-1. estabilizar o estado combinado e executar `scripts/validate.ps1`;
-2. revisar e ativar CI remoto obrigatório;
-3. decidir DEC-PID2-01 a DEC-PID2-10;
-4. implementar identidade pública v2 em lote isolado;
-5. preparar MySQL isolado e validar migrations;
-6. testar concorrência real e fluxos transacionais;
+1. estabilizar o lote v2 e executar `scripts/validate.ps1`;
+2. revisar o diff e criar checkpoint Git sem ativar migrations;
+3. preparar MySQL isolado e validar migrations `001..008`;
+4. testar concorrência real, consumo único e sessão ativa exclusiva;
+5. ensaiar backup, restore e rollback;
+6. configurar HTTPS de staging e a chave HMAC fora do repositório;
 7. executar E2E público e administrativo;
-8. corrigir webroot/storage e headers;
-9. concluir QA da PWA e interface pública;
-10. executar QA visual e de acessibilidade do painel autenticado;
-11. executar backup, restore, deploy e rollback em staging;
-12. configurar monitoramento;
-13. reavaliar formalmente readiness de produção.
+8. realizar piloto controlado de emissão de códigos;
+9. coordenar o corte no início de um ciclo;
+10. corrigir webroot/storage e headers;
+11. concluir QA visual, acessibilidade e PWA;
+12. revisar e ativar CI remoto obrigatório;
+13. configurar monitoramento e reavaliar readiness.
 
 ## Comandos de validação previstos
 
@@ -235,10 +237,15 @@ pwsh -File scripts/validate.ps1
 node tests/security/secret_hygiene_policy.test.js
 node tests/security/endpoint_security_policy.test.js
 node tests/security/service_worker_cache_policy.test.js
+node tests/security/public_identity_core_policy.test.js
+node tests/security/public_identity_v2_endpoints_policy.test.js
 node tests/frontend/public_interface_accessibility.test.js
+node tests/frontend/public_identity_v2_contract.test.js
 node tests/frontend/admin_interface_contract.test.js
 php tests/security/security_foundation_test.php
+php tests/security/public_identity_test.php
 php tests/database/schema_contract_test.php
+php tests/database/identity_v2_schema_contract_test.php
 php tests/database/settings_token_cycle_cas_policy_test.php
 php tests/database/queue_exit_compaction_policy_test.php
 php tests/database/runtime_data_policy_test.php

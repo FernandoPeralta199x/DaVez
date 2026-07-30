@@ -10,16 +10,32 @@ const inlineScript = [...interfaceSource.matchAll(/<script>([\s\S]*?)<\/script>/
   .map((match) => match[1])
   .join("\n");
 
+assert.match(
+  source,
+  /<a class="back-home" href="\/" aria-label="Voltar para a tela inicial">/,
+  "O login administrativo deve permitir retorno semântico à tela inicial."
+);
+assert.match(
+  source,
+  /class="back-home-icon" aria-hidden="true">←<\/span>/,
+  "O ícone do retorno deve ser decorativo."
+);
+
 assert.ok(htmlStart >= 0, "A interface autenticada deve existir.");
 
 for (const endpoint of [
   '"admin.php"',
-  '"DaVez/listar.php?v=1"',
+  '"DaVez/listar_admin.php?v=1"',
   '"DaVez/sair.php?v=1"',
   '"DaVez/reordenar.php?v=1"',
 ]) {
   assert.ok(interfaceSource.includes(endpoint), `Endpoint preservado: ${endpoint}`);
 }
+assert.doesNotMatch(
+  inlineScript,
+  /DaVez\/listar\.php\?v=/,
+  "O painel não pode consumir a fila pública mínima."
+);
 
 for (const action of [
   "toggle_chamada",
@@ -29,6 +45,8 @@ for (const action of [
   "add_manual",
   "atualizar_ordem",
   "apagar_relatorio",
+  "issue_checkin_ticket",
+  "issue_recovery_ticket",
 ]) {
   assert.ok(interfaceSource.includes(action), `Ação preservada: ${action}`);
 }
@@ -46,10 +64,14 @@ assert.match(inlineScript, /ArrowLeft/);
 assert.match(inlineScript, /ArrowRight/);
 assert.match(inlineScript, /aria-selected/);
 
-for (const id of ["token", "lat", "lng", "raio", "manualNome", "manualObs"]) {
+for (const id of ["lat", "lng", "raio", "manualNome", "manualObs"]) {
   assert.match(interfaceSource, new RegExp(`<label[^>]+for="${id}"`));
   assert.match(interfaceSource, new RegExp(`<input[^>]+id="${id}"`));
 }
+assert.doesNotMatch(interfaceSource, /<label[^>]+for="token"/i);
+assert.doesNotMatch(interfaceSource, /<input[^>]+id="token"/i);
+assert.doesNotMatch(interfaceSource, /id="tokenDisplay"|id="contador"/);
+assert.doesNotMatch(inlineScript, /f\.append\(["']token["']/);
 
 const buttonTags = [...interfaceSource.matchAll(/<button\b[^>]*>/gi)].map(
   (match) => match[0]
@@ -80,6 +102,7 @@ assert.equal(
 
 assert.match(interfaceSource, /data-action="move-main"/);
 assert.match(interfaceSource, /data-action="move-davez"/);
+assert.match(interfaceSource, /data-action="issue-recovery" data-id="\$\{id\}"/);
 assert.match(inlineScript, /window\.Sortable/);
 assert.match(inlineScript, /typeof window\.Sortable\.create/);
 
@@ -91,5 +114,22 @@ assert.match(interfaceSource, /class="table-scroll" tabindex="0" role="region"/)
 assert.match(interfaceSource, /data-state="loading"/);
 assert.match(interfaceSource, /data-state="empty"/);
 assert.match(inlineScript, /data-state="\$\{tone\}"/);
+
+assert.match(interfaceSource, /id="individual-codes-title">Códigos individuais<\/h2>/);
+assert.match(interfaceSource, /id="btnIssueCheckinTicket"/);
+assert.match(
+  interfaceSource,
+  /id="issuedTicketResult" role="status"[\s\S]*?aria-live="polite"[\s\S]*?hidden/
+);
+assert.match(interfaceSource, /id="issuedAccessCode"/);
+assert.match(interfaceSource, /id="issuedTicketExpiry"/);
+assert.match(interfaceSource, /id="btnCopyTicket"/);
+assert.match(interfaceSource, /id="btnHideTicket"/);
+assert.match(interfaceSource, /QR externo não faz parte deste lote/);
+assert.match(inlineScript, /action:'issue_checkin_ticket'/);
+assert.match(inlineScript, /action:'issue_recovery_ticket'/);
+assert.match(inlineScript, /_csrf:CSRF_TOKEN/);
+assert.match(inlineScript, /navigator\.clipboard\.writeText\(code\)/);
+assert.match(inlineScript, /openAdminDialog\(\{[\s\S]*?Emitir código de recovery\?/);
 
 process.stdout.write("admin_interface_contract: OK\n");

@@ -36,15 +36,18 @@ CREATE TABLE IF NOT EXISTS checkins (
     ip VARCHAR(45) NULL,
     user_agent VARCHAR(512) NULL,
     data_hora DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    operational_date DATE NULL,
     ordem INT UNSIGNED NULL,
     is_closed TINYINT(1) NOT NULL DEFAULT 0,
     closed_at DATETIME NULL,
     obs VARCHAR(120) NULL,
     PRIMARY KEY (id),
+    UNIQUE KEY uniq_checkins_id_operational_date (id, operational_date),
     KEY idx_checkins_cycle_order (data_hora, is_closed, ordem, id),
     KEY idx_checkins_client_cycle (client_id, data_hora),
     KEY idx_checkins_name_cycle (nome, data_hora),
     KEY idx_checkins_closed_duration (is_closed, data_hora, closed_at),
+    KEY idx_checkins_operational_date (operational_date, id),
     CONSTRAINT chk_checkins_closed CHECK (is_closed IN (0, 1)),
     CONSTRAINT chk_checkins_order CHECK (ordem IS NULL OR ordem >= 1),
     CONSTRAINT chk_checkins_closed_at CHECK (
@@ -55,10 +58,127 @@ CREATE TABLE IF NOT EXISTS checkins (
   DEFAULT CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS admission_tickets (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    ticket_hash BINARY(32) NOT NULL,
+    purpose VARCHAR(16) NOT NULL,
+    operational_date DATE NOT NULL,
+    checkin_id BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    consumed_at DATETIME NULL,
+    revoked_at DATETIME NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uniq_admission_ticket_hash (ticket_hash),
+    KEY idx_admission_ticket_expiry (
+        expires_at,
+        consumed_at,
+        revoked_at
+    ),
+    KEY idx_admission_ticket_checkin_cycle (
+        checkin_id,
+        operational_date,
+        created_at
+    ),
+    CONSTRAINT fk_admission_ticket_checkin_cycle
+        FOREIGN KEY (checkin_id, operational_date)
+        REFERENCES checkins (id, operational_date)
+        ON UPDATE RESTRICT
+        ON DELETE RESTRICT,
+    CONSTRAINT chk_admission_ticket_purpose CHECK (
+        purpose IN ('checkin', 'recovery')
+    ),
+    CONSTRAINT chk_admission_ticket_ttl CHECK (
+        expires_at = DATE_ADD(created_at, INTERVAL 10 MINUTE)
+    ),
+    CONSTRAINT chk_admission_ticket_consumption CHECK (
+        consumed_at IS NULL OR consumed_at <= expires_at
+    ),
+    CONSTRAINT chk_admission_ticket_revocation CHECK (
+        revoked_at IS NULL OR revoked_at >= created_at
+    ),
+    CONSTRAINT chk_admission_ticket_target CHECK (
+        (
+            purpose = 'checkin'
+            AND (
+                (consumed_at IS NULL AND checkin_id IS NULL)
+                OR
+                (consumed_at IS NOT NULL AND checkin_id IS NOT NULL)
+            )
+        )
+        OR
+        (purpose = 'recovery' AND checkin_id IS NOT NULL)
+    )
+) ENGINE=InnoDB
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS public_sessions (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    checkin_id BIGINT UNSIGNED NOT NULL,
+    operational_date DATE NOT NULL,
+    token_hash BINARY(32) NOT NULL,
+    active_slot TINYINT UNSIGNED NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    revoked_at DATETIME NULL,
+    revocation_reason VARCHAR(32) NULL,
+    rotated_from_id BIGINT UNSIGNED NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uniq_public_session_token_hash (token_hash),
+    UNIQUE KEY uniq_public_session_active_device (
+        checkin_id,
+        active_slot
+    ),
+    KEY idx_public_session_checkin_cycle (
+        checkin_id,
+        operational_date,
+        created_at
+    ),
+    KEY idx_public_session_expiry (
+        operational_date,
+        expires_at,
+        revoked_at
+    ),
+    KEY idx_public_session_rotation (rotated_from_id),
+    CONSTRAINT fk_public_session_checkin_cycle
+        FOREIGN KEY (checkin_id, operational_date)
+        REFERENCES checkins (id, operational_date)
+        ON UPDATE RESTRICT
+        ON DELETE RESTRICT,
+    CONSTRAINT fk_public_session_rotation
+        FOREIGN KEY (rotated_from_id)
+        REFERENCES public_sessions (id)
+        ON UPDATE RESTRICT
+        ON DELETE SET NULL,
+    CONSTRAINT chk_public_session_active_slot CHECK (
+        (active_slot = 1 AND revoked_at IS NULL)
+        OR
+        (active_slot IS NULL AND revoked_at IS NOT NULL)
+    ),
+    CONSTRAINT chk_public_session_expiry CHECK (
+        expires_at > created_at
+        AND expires_at <= DATE_ADD(created_at, INTERVAL 24 HOUR)
+        AND expires_at <= DATE_ADD(
+            CAST(operational_date AS DATETIME),
+            INTERVAL 30 HOUR
+        )
+    ),
+    CONSTRAINT chk_public_session_revocation CHECK (
+        (revoked_at IS NULL AND revocation_reason IS NULL)
+        OR
+        (revoked_at IS NOT NULL AND revocation_reason IS NOT NULL)
+    )
+) ENGINE=InnoDB
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS fila_da_vez (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     dia DATE NOT NULL,
-    client_id VARCHAR(64) NOT NULL,
+    client_id VARCHAR(64) NULL,
+    checkin_id BIGINT UNSIGNED NULL,
     nome VARCHAR(120) NOT NULL,
     entered_at DATETIME NOT NULL,
     ordem INT UNSIGNED NOT NULL DEFAULT 0,
@@ -66,9 +186,19 @@ CREATE TABLE IF NOT EXISTS fila_da_vez (
     last_action_at DATETIME NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uniq_fila_dia_client (dia, client_id),
+    UNIQUE KEY uniq_fila_dia_checkin (dia, checkin_id),
+    KEY idx_fila_checkin_dia (checkin_id, dia),
     KEY idx_fila_dia_status (dia, status),
     KEY idx_fila_dia_ordem (dia, ordem),
     KEY idx_fila_dia_entered (dia, entered_at),
+    CONSTRAINT fk_fila_checkin_cycle
+        FOREIGN KEY (checkin_id, dia)
+        REFERENCES checkins (id, operational_date)
+        ON UPDATE RESTRICT
+        ON DELETE RESTRICT,
+    CONSTRAINT chk_fila_identity_source CHECK (
+        client_id IS NOT NULL OR checkin_id IS NOT NULL
+    ),
     CONSTRAINT chk_fila_order CHECK (ordem >= 0),
     CONSTRAINT chk_fila_status CHECK (status IN ('na_fila', 'em_entrega'))
 ) ENGINE=InnoDB

@@ -35,13 +35,41 @@ function admin_render_login(?string $error = null, int $status = 200): never {
     . 'font:16px system-ui,sans-serif;background:#070a0f;color:#f4f7fb}'
     . 'main{width:min(92vw,420px);padding:32px;border:1px solid #263142;'
     . 'border-radius:18px;background:#0c111a}'
+    . 'nav{display:flex;margin-bottom:24px}'
+    . '.back-home{display:inline-flex;align-items:center;gap:8px;min-height:44px;'
+    . 'padding:5px 12px 5px 5px;border:1px solid rgba(125,151,190,.3);'
+    . 'border-radius:999px;color:#c7d0dc;background:#111824;'
+    . 'box-shadow:inset 0 1px 0 rgba(255,255,255,.05);font-size:13px;'
+    . 'font-weight:750;text-decoration:none;transform:translateY(0);'
+    . 'transition:color 260ms cubic-bezier(.32,.72,0,1),'
+    . 'border-color 260ms cubic-bezier(.32,.72,0,1),'
+    . 'background 260ms cubic-bezier(.32,.72,0,1),'
+    . 'transform 260ms cubic-bezier(.32,.72,0,1)}'
+    . '.back-home-icon{display:inline-grid;place-items:center;width:32px;'
+    . 'height:32px;border-radius:50%;color:#ffd1a3;background:#1b2a41;'
+    . 'font-size:16px;transform:translateX(0);'
+    . 'transition:transform 260ms cubic-bezier(.32,.72,0,1)}'
+    . '.back-home:hover{border-color:#6f87ad;color:#fff;background:#172235;'
+    . 'transform:translateY(-2px)}'
+    . '.back-home:hover .back-home-icon{transform:translateX(-2px)}'
+    . '.back-home:active{transform:translateY(0) scale(.98)}'
+    . '.back-home:focus-visible{outline:3px solid rgba(255,138,31,.36);'
+    . 'outline-offset:3px}'
     . 'label{display:block;margin:18px 0 6px;color:#c7d0dc}'
     . 'input{box-sizing:border-box;width:100%;padding:13px;border:1px solid '
     . '#38465a;border-radius:10px;background:#111824;color:#fff}'
     . 'button{width:100%;margin-top:22px;padding:13px;border:0;border-radius:10px;'
     . 'background:#ff8a1f;color:#17100a;font-weight:800;cursor:pointer}'
     . '.error{padding:12px;border-radius:10px;background:#421d27;color:#ffd8df}'
-    . 'small{color:#96a0ae}</style></head><body><main>'
+    . 'small{color:#96a0ae}'
+    . '@media(prefers-reduced-motion:reduce){.back-home,.back-home-icon{'
+    . 'transition-duration:.01ms}}'
+    . '@media(forced-colors:active){.back-home,.back-home-icon{'
+    . 'border:1px solid CanvasText}}</style></head><body><main>'
+    . '<nav aria-label="Navegação do acesso administrativo">'
+    . '<a class="back-home" href="/" aria-label="Voltar para a tela inicial">'
+    . '<span class="back-home-icon" aria-hidden="true">←</span>'
+    . '<span>Voltar ao início</span></a></nav>'
     . '<h1>Administração DaVez</h1><small>Sessão protegida e temporária.</small>'
     . $safeError
     . '<form method="post" action="admin.php" autocomplete="on">'
@@ -144,12 +172,17 @@ $operationalStart = $operationalContext->startSql();
 $operationalEnd = $operationalContext->endSql();
 $operationalDate = $operationalContext->date();
 
-/* ===== garante token sem mexer na lista ===== */
-try {
-  $s = davez_settings_token_cycle($conn)->loadAndRotate(
-    $operationalContext
-  );
-} catch (Throwable $exception) {
+/* ===== configurações operacionais somente leitura ===== */
+$settingsResult = $conn->query(
+  "SELECT chamada_aberta, chamada_inicio, chamada_fim,
+          lat_base, lng_base, raio
+   FROM settings
+   WHERE id=1
+   LIMIT 1"
+);
+$s = $settingsResult ? $settingsResult->fetch_assoc() : null;
+
+if (!$s) {
   davez_send_error(
     'settings_unavailable',
     'Configurações temporariamente indisponíveis.',
@@ -245,10 +278,22 @@ if ($action !== '') {
 }
 
 if ($action === "dados") {
-  $s2 = davez_settings_token_cycle($conn)->loadAndRotate(
-    $operationalContext
+  $settingsData = $conn->query(
+    "SELECT chamada_aberta, chamada_inicio, chamada_fim,
+            lat_base, lng_base, raio
+     FROM settings
+     WHERE id=1
+     LIMIT 1"
   );
-  json_out($s2 ?: []);
+  $settingsRow = $settingsData
+    ? $settingsData->fetch_assoc()
+    : null;
+
+  if (!$settingsRow) {
+    json_out(['erro'=>'Configurações indisponíveis.'], 500);
+  }
+
+  json_out($settingsRow);
 }
 
 if ($action === "metrics") {
@@ -348,6 +393,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
     'apagar_relatorio' => ['acao', 'id', '_csrf'],
     'atualizar_ordem' => ['acao', 'ordem', '_csrf'],
     'add_manual' => ['acao', 'nome', 'obs', '_csrf'],
+    'issue_checkin_ticket' => ['acao', '_csrf'],
+    'issue_recovery_ticket' => ['acao', 'id', '_csrf'],
   ];
 
   if (!isset($allowedJsonFields[$acao])) {
@@ -385,6 +432,107 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
       ['sucesso'=>false,'erro'=>'Muitas ações. Aguarde e tente novamente.'],
       429
     );
+  }
+
+  if (
+    $acao === 'issue_checkin_ticket'
+    || $acao === 'issue_recovery_ticket'
+  ) {
+    $purpose = $acao === 'issue_recovery_ticket'
+      ? 'recovery'
+      : 'checkin';
+    $checkinId = null;
+
+    if ($purpose === 'recovery') {
+      try {
+        $checkinId = davez_input_integer(
+          $input,
+          'id',
+          1,
+          PHP_INT_MAX
+        );
+      } catch (InvalidArgumentException $exception) {
+        json_out([
+          'sucesso' => false,
+          'erro' => 'Check-in inválido para recuperação.'
+        ], 400);
+      }
+
+      $target = $conn->prepare(
+        "SELECT id
+         FROM checkins
+         WHERE id=?
+           AND operational_date=?
+         LIMIT 1"
+      );
+
+      if (!$target) {
+        json_out([
+          'sucesso' => false,
+          'erro' => 'Check-in indisponível para recuperação.'
+        ], 500);
+      }
+
+      $target->bind_param(
+        'is',
+        $checkinId,
+        $operationalDate
+      );
+
+      if (!$target->execute()) {
+        $target->close();
+        json_out([
+          'sucesso' => false,
+          'erro' => 'Check-in indisponível para recuperação.'
+        ], 500);
+      }
+
+      $target->store_result();
+      $targetExists = $target->num_rows === 1;
+      $target->close();
+
+      if (!$targetExists) {
+        json_out([
+          'sucesso' => false,
+          'erro' => 'Check-in não encontrado no ciclo atual.'
+        ], 404);
+      }
+    }
+
+    try {
+      $accessCode = davez_public_ticket_code();
+      $issuedAt = $operationalContext->reference();
+      $expiresAt = davez_public_ticket_expires_at(
+        $operationalContext,
+        $issuedAt
+      );
+      davez_public_identity_store($conn)->issueTicket(
+        davez_public_ticket_hash($accessCode),
+        $purpose,
+        $checkinId,
+        $operationalDate,
+        $issuedAt,
+        $expiresAt
+      );
+    } catch (InvalidArgumentException $exception) {
+      json_out([
+        'sucesso' => false,
+        'erro' => 'Não foi possível emitir o código individual.'
+      ], 400);
+    } catch (RuntimeException $exception) {
+      json_out([
+        'sucesso' => false,
+        'erro' => 'Emissão indisponível. Confira schema e configuração.'
+      ], 503);
+    }
+
+    json_out([
+      'sucesso' => true,
+      'purpose' => $purpose,
+      'access_code' => $accessCode,
+      'expires_at' => $expiresAt->format(DATE_ATOM),
+      'aviso' => 'Exiba e entregue este código apenas uma vez.'
+    ]);
   }
 
   if ($acao === 'toggle_chamada') {
@@ -439,7 +587,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
         static function () use (
           $conn,
           $operationalStart,
-          $operationalEnd
+          $operationalEnd,
+          $operationalDate
         ): int {
           $settingsLock = $conn->query(
             "SELECT id
@@ -537,6 +686,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
           $reportId = (int) $conn->insert_id;
           $report->close();
 
+          $identityTables = [
+            'fila_da_vez',
+            'public_sessions',
+            'admission_tickets',
+          ];
+
+          foreach ($identityTables as $identityTable) {
+            $dateColumn = $identityTable === 'fila_da_vez'
+              ? 'dia'
+              : 'operational_date';
+            $identityDelete = $conn->prepare(
+              "DELETE FROM {$identityTable}
+               WHERE {$dateColumn}=?"
+            );
+
+            if (!$identityDelete) {
+              throw new RuntimeException(
+                'Identidade pública indisponível para limpeza.'
+              );
+            }
+
+            $identityDelete->bind_param(
+              's',
+              $operationalDate
+            );
+
+            if (!$identityDelete->execute()) {
+              $identityDelete->close();
+              throw new RuntimeException(
+                'Identidade pública indisponível para limpeza.'
+              );
+            }
+            $identityDelete->close();
+          }
+
           $delete = $conn->prepare(
             "DELETE FROM checkins
              WHERE data_hora >= ?
@@ -613,6 +797,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
     $newClosed = 0;
     $removed = 0;
     $allocator = davez_atomic_order_allocator($conn);
+    $publicIdentityStore = davez_public_identity_store($conn);
+    $revokedAt = $operationalContext->reference();
 
     try {
       $allocator->allocateAndPersist(
@@ -702,6 +888,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
           $operationalStart,
           $operationalEnd,
           $operationalDate,
+          $publicIdentityStore,
+          $revokedAt,
           &$checkin,
           &$newClosed,
           &$removed
@@ -750,42 +938,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
 
           $name = trim((string) ($checkin['nome'] ?? ''));
           $clientId = trim((string) ($checkin['client_id'] ?? ''));
+          $delete = $conn->prepare(
+            "DELETE FROM fila_da_vez
+             WHERE dia=?
+               AND (
+                 checkin_id=?
+                 OR (
+                   checkin_id IS NULL
+                   AND (
+                     client_id=?
+                     OR LOWER(TRIM(nome))=LOWER(TRIM(?))
+                   )
+                 )
+               )"
+          );
 
-          if ($clientId !== '') {
-            $delete = $conn->prepare(
-              "DELETE FROM fila_da_vez
-               WHERE dia=?
-                 AND (
-                   client_id=?
-                   OR LOWER(TRIM(nome))=LOWER(TRIM(?))
-                 )"
+          if (!$delete) {
+            throw new RuntimeException(
+              'Fila DaVez indisponível para atualização.'
             );
-
-            if (!$delete) {
-              throw new RuntimeException(
-                'Fila DaVez indisponível para atualização.'
-              );
-            }
-            $delete->bind_param(
-              "sss",
-              $operationalDate,
-              $clientId,
-              $name
-            );
-          } else {
-            $delete = $conn->prepare(
-              "DELETE FROM fila_da_vez
-               WHERE dia=?
-                 AND LOWER(TRIM(nome))=LOWER(TRIM(?))"
-            );
-
-            if (!$delete) {
-              throw new RuntimeException(
-                'Fila DaVez indisponível para atualização.'
-              );
-            }
-            $delete->bind_param("ss", $operationalDate, $name);
           }
+          $delete->bind_param(
+            "siss",
+            $operationalDate,
+            $id,
+            $clientId,
+            $name
+          );
 
           if (!$delete->execute()) {
             $delete->close();
@@ -796,6 +975,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
 
           $removed = (int) $delete->affected_rows;
           $delete->close();
+
+          $publicIdentityStore->revokeActiveSessions(
+            $id,
+            'admin',
+            $revokedAt
+          );
         }
       );
 
@@ -1106,12 +1291,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
           $conn,
           $nome,
           $obs,
+          $operationalDate,
           &$insertedId
         ): void {
           $insert = $conn->prepare(
             "INSERT INTO checkins
-               (nome, data_hora, ordem, is_closed, closed_at, obs)
-             VALUES (?, NOW(), ?, 0, NULL, ?)"
+               (nome, data_hora, operational_date, ordem,
+                is_closed, closed_at, obs)
+             VALUES (?, NOW(), ?, ?, 0, NULL, ?)"
           );
 
           if (!$insert) {
@@ -1120,7 +1307,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
             );
           }
 
-          $insert->bind_param("sis", $nome, $order, $obs);
+          $insert->bind_param(
+            "ssis",
+            $nome,
+            $operationalDate,
+            $order,
+            $obs
+          );
 
           if (!$insert->execute() || $insert->affected_rows !== 1) {
             $insert->close();
@@ -1162,7 +1355,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   try {
     davez_assert_allowed_input_keys(
       $_POST,
-      ['form_action', '_csrf', 'token', 'lat', 'lng', 'raio']
+      ['form_action', '_csrf', 'lat', 'lng', 'raio']
     );
     davez_assert_no_untrusted_identity($_POST);
     davez_require_csrf(
@@ -1171,11 +1364,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (($_POST['form_action'] ?? '') !== 'save_settings') {
       throw new InvalidArgumentException('Ação de formulário inválida.');
-    }
-
-    $token = davez_input_string($_POST, 'token', 0, 16);
-    if ($token !== '' && preg_match('/\A[A-Z0-9]{4,16}\z/', $token) !== 1) {
-      throw new InvalidArgumentException('Token inválido.');
     }
 
     $lat = davez_input_float($_POST, 'lat', -90, 90);
@@ -1202,8 +1390,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     json_out(['sucesso'=>false,'erro'=>'Controle de segurança indisponível.'], 503);
   }
 
-  $stmt = $conn->prepare("UPDATE settings SET token=?, lat_base=?, lng_base=?, raio=? WHERE id=1");
-  $stmt->bind_param("sddi", $token, $lat, $lng, $raio);
+  $stmt = $conn->prepare(
+    "UPDATE settings
+     SET lat_base=?, lng_base=?, raio=?
+     WHERE id=1"
+  );
+  $stmt->bind_param("ddi", $lat, $lng, $raio);
   $stmt->execute();
   json_out(['sucesso' => true]);
 }
@@ -1239,8 +1431,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   --danger-soft:#fde7e8;
   --success:#246b42;
   --success-soft:#def1e5;
-  --token-bg:#101817;
-  --token-ink:#83f0c5;
+  --code-bg:#101817;
+  --code-ink:#83f0c5;
   --shadow:0 18px 42px rgba(40,54,50,.09);
   --shadow-small:0 8px 22px rgba(40,54,50,.08);
   --radius-xl:24px;
@@ -1271,8 +1463,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     --danger-soft:#4b2227;
     --success:#80d8a3;
     --success-soft:#1d422d;
-    --token-bg:#070c0b;
-    --token-ink:#8ef3ca;
+    --code-bg:#070c0b;
+    --code-ink:#8ef3ca;
     --shadow:0 20px 48px rgba(0,0,0,.25);
     --shadow-small:0 10px 26px rgba(0,0,0,.22);
     --focus:#7cb8ff;
@@ -1380,44 +1572,29 @@ button:disabled{cursor:not-allowed;opacity:.48}
 }
 .section{display:block}
 .section[hidden]{display:none}
-.token-box{
-  position:relative;
-  overflow:hidden;
-  padding:clamp(24px,5vw,46px);
+.ticket-panel{border-color:color-mix(in srgb,var(--accent) 42%,var(--line))}
+.ticket-result{
+  margin-top:18px;
+  padding:18px;
   border:1px solid #283633;
-  border-radius:var(--radius-xl);
-  background:var(--token-bg);
-  color:var(--token-ink);
-  text-align:center;
-  box-shadow:var(--shadow),inset 0 0 0 1px rgba(255,255,255,.04);
-  margin-bottom:16px;
+  border-radius:var(--radius-lg);
+  background:var(--code-bg);
+  color:var(--code-ink);
 }
-.token-box::after{
-  content:"";
-  position:absolute;
-  inset:10px;
-  border:1px solid rgba(131,240,197,.13);
-  border-radius:calc(var(--radius-xl) - 8px);
-  pointer-events:none;
-}
-.token-box output{
-  position:relative;
-  z-index:1;
+.ticket-result[hidden]{display:none}
+.ticket-result output{
   display:block;
+  margin:8px 0 10px;
   font-family:"Cascadia Mono","SFMono-Regular",Consolas,monospace;
-  font-size:clamp(2.4rem,9vw,5.25rem);
+  font-size:clamp(1.45rem,5vw,2.3rem);
   font-weight:800;
-  letter-spacing:clamp(.12em,2vw,.3em);
-  line-height:1;
+  letter-spacing:.08em;
+  line-height:1.2;
   overflow-wrap:anywhere;
 }
-.token-box small{
-  position:relative;
-  z-index:1;
-  display:block;
-  margin-top:18px;
-  color:#c4d2cd;
-}
+.ticket-result p{margin:5px 0;color:#c4d2cd}
+.ticket-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}
+.ticket-actions button{flex:1;min-width:160px}
 .dash{
   display:grid;
   grid-template-columns:repeat(6,minmax(0,1fr));
@@ -1781,13 +1958,30 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
 
   <section id="chamada" class="section active" role="tabpanel"
     aria-labelledby="tab-chamada" tabindex="0">
-    <div class="token-box" aria-labelledby="token-title">
-      <span class="sr-only" id="token-title">Token operacional atual</span>
-      <output id="tokenDisplay" aria-live="polite">----</output>
-      <small>Atualiza automaticamente. Próxima troca em
-        <strong id="contador">--:--:--</strong>
-      </small>
-    </div>
+    <section class="card ticket-panel" aria-labelledby="individual-codes-title">
+      <div class="toolbar">
+        <div>
+          <p class="eyebrow">Acesso público v2</p>
+          <h2 id="individual-codes-title">Códigos individuais</h2>
+          <p><small class="mini">Emita um código para novo check-in ou um recovery vinculado a um registro existente.</small></p>
+        </div>
+        <button type="button" class="btn-primary" id="btnIssueCheckinTicket">
+          Emitir código de check-in
+        </button>
+      </div>
+      <p class="mini">QR externo não faz parte deste lote. Entregue o código individual como fallback e confirme o destinatário.</p>
+      <div class="ticket-result" id="issuedTicketResult" role="status"
+        aria-live="polite" aria-atomic="true" tabindex="-1" hidden>
+        <strong id="issuedTicketPurpose">Código emitido</strong>
+        <output id="issuedAccessCode"></output>
+        <p>Expira em <time id="issuedTicketExpiry"></time>.</p>
+        <p id="issuedTicketWarning"></p>
+        <div class="ticket-actions">
+          <button type="button" class="btn-primary" id="btnCopyTicket">Copiar código</button>
+          <button type="button" class="btn-secondary" id="btnHideTicket">Ocultar código</button>
+        </div>
+      </div>
+    </section>
 
     <div class="dash" id="dash" aria-label="Métricas do ciclo" aria-busy="true">
       <article class="mcard">
@@ -1914,12 +2108,6 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
       <h2 id="config-title">Configurações da lista</h2>
       <form id="configForm">
         <div class="field">
-          <label for="token">Token atual</label>
-          <small class="field-help" id="token-help">Código usado pelos motoboys. A rotação ocorre a cada três dias, às 06:00.</small>
-          <input id="token" name="token" type="text" maxlength="64"
-            aria-describedby="token-help" autocomplete="off" placeholder="Ex.: A1B2C3">
-        </div>
-        <div class="field">
           <label for="lat">Latitude base</label>
           <small class="field-help" id="lat-help">Coordenada do ponto onde o check-in é validado.</small>
           <input id="lat" name="lat" type="text" inputmode="decimal"
@@ -1962,7 +2150,7 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
 let carregando = false;
 let pausado = false;
 const CSRF_TOKEN = <?= json_encode(davez_csrf_token(), JSON_UNESCAPED_SLASHES) ?>;
-const DV_LIST_URL = "DaVez/listar.php?v=1";
+const DV_LIST_URL = "DaVez/listar_admin.php?v=1";
 const DV_SAIR_URL = "DaVez/sair.php?v=1";
 const DV_REORDER_URL = "DaVez/reordenar.php?v=1";
 
@@ -1971,7 +2159,6 @@ let dvLast = 0;
 let dvSortable = null;
 let dvPausado = false;
 
-let tokenCycleEndAt = null;
 let sortable = null;
 let toastTimer = null;
 let dialogResolver = null;
@@ -2273,7 +2460,6 @@ async function salvar(){
   let f = new FormData();
   f.append("form_action", "save_settings");
   f.append("_csrf", CSRF_TOKEN);
-  f.append("token", document.getElementById('token').value);
   f.append("lat", document.getElementById('lat').value);
   f.append("lng", document.getElementById('lng').value);
   f.append("raio", document.getElementById('raio').value);
@@ -2296,6 +2482,152 @@ async function salvar(){
     }
   } finally {
     setButtonBusy(button, false);
+  }
+}
+
+function clearIssuedTicket(){
+  const result = document.getElementById('issuedTicketResult');
+  document.getElementById('issuedAccessCode').textContent = '';
+  document.getElementById('issuedTicketPurpose').textContent = 'Código emitido';
+  document.getElementById('issuedTicketExpiry').textContent = '';
+  document.getElementById('issuedTicketExpiry').removeAttribute('datetime');
+  document.getElementById('issuedTicketWarning').textContent = '';
+  result.hidden = true;
+}
+
+function hideIssuedTicket(){
+  clearIssuedTicket();
+  document.getElementById('btnIssueCheckinTicket').focus();
+}
+
+function showIssuedTicket(data, purposeLabel){
+  const accessCode = typeof data.access_code === 'string'
+    ? data.access_code.trim()
+    : '';
+  if (!accessCode) {
+    throw new AdminRequestError('O servidor não retornou o código individual.');
+  }
+
+  const expiry = new Date(String(data.expires_at || ''));
+  const expiryText = Number.isNaN(expiry.getTime())
+    ? 'horário informado pelo servidor'
+    : expiry.toLocaleString('pt-BR', {
+        dateStyle:'short',
+        timeStyle:'short'
+      });
+
+  const result = document.getElementById('issuedTicketResult');
+  document.getElementById('issuedTicketPurpose').textContent = purposeLabel;
+  document.getElementById('issuedAccessCode').textContent = accessCode;
+  const expiryElement = document.getElementById('issuedTicketExpiry');
+  expiryElement.textContent = expiryText;
+  if (!Number.isNaN(expiry.getTime())) {
+    expiryElement.dateTime = expiry.toISOString();
+  }
+  document.getElementById('issuedTicketWarning').textContent =
+    typeof data.aviso === 'string'
+      ? data.aviso
+      : 'Exiba e entregue este código apenas uma vez.';
+  result.hidden = false;
+  result.focus();
+}
+
+async function issueIndividualTicket({
+  action,
+  id=null,
+  button,
+  purposeLabel
+}){
+  clearIssuedTicket();
+  setButtonBusy(button, true);
+  const payload = {
+    acao:action,
+    _csrf:CSRF_TOKEN
+  };
+  if (id !== null) payload.id = id;
+
+  try {
+    const data = await fetchJsonAdmin('admin.php', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'X-CSRF-Token':CSRF_TOKEN
+      },
+      body:JSON.stringify(payload)
+    });
+    if (!data.sucesso) {
+      throw new AdminRequestError(
+        getErrorMessage(data, 'Não foi possível emitir o código individual.')
+      );
+    }
+    showIssuedTicket(data, purposeLabel);
+    showToast('Código individual emitido. Entregue-o somente ao destinatário.');
+  } catch (error) {
+    if (!(error instanceof AdminAuthenticationRequiredError)) {
+      showToast(error.message || 'Não foi possível emitir o código individual.', false);
+    }
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+async function issueCheckinTicket(){
+  const button = document.getElementById('btnIssueCheckinTicket');
+  await issueIndividualTicket({
+    action:'issue_checkin_ticket',
+    button,
+    purposeLabel:'Código individual para novo check-in'
+  });
+}
+
+async function issueRecoveryTicket(button, id){
+  if (!Number.isInteger(id) || id < 1) {
+    showToast('Check-in inválido para recovery.', false);
+    return;
+  }
+
+  const item = button.closest('.queue-item');
+  const name = item && item.querySelector('.nome')
+    ? item.querySelector('.nome').textContent.trim()
+    : `registro #${id}`;
+  const confirmed = await openAdminDialog({
+    title:'Emitir código de recovery?',
+    message:`Um código individual será emitido para ${name}. Confirme o destinatário antes de entregar.`,
+    confirmLabel:'Emitir recovery',
+    cancelLabel:'Cancelar',
+    tone:'danger'
+  });
+  if (!confirmed) return;
+
+  await issueIndividualTicket({
+    action:'issue_recovery_ticket',
+    id,
+    button,
+    purposeLabel:`Código de recovery para ${name}`
+  });
+}
+
+async function copyIssuedTicket(){
+  const code = document.getElementById('issuedAccessCode').textContent.trim();
+  if (!code) {
+    showToast('Nenhum código disponível para copiar.', false);
+    return;
+  }
+
+  try {
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+      throw new Error('clipboard_unavailable');
+    }
+    await navigator.clipboard.writeText(code);
+    showToast('Código copiado. Compartilhe-o somente com o destinatário.');
+  } catch (error) {
+    const output = document.getElementById('issuedAccessCode');
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(output);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    showToast('Cópia automática indisponível. O código foi selecionado para cópia manual.', false, 4200);
   }
 }
 
@@ -2464,13 +2796,9 @@ async function carregar(){
   lista.setAttribute('aria-busy', 'true');
   try{
     const d = await fetchJsonAdmin("admin.php?action=dados");
-    document.getElementById('token').value = d.token || '';
-    document.getElementById('tokenDisplay').textContent = d.token || '----';
     document.getElementById('lat').value = d.lat_base || '';
     document.getElementById('lng').value = d.lng_base || '';
     document.getElementById('raio').value = d.raio || '';
-
-    tokenCycleEndAt = d.token_cycle_end ? new Date(d.token_cycle_end.replace(' ', 'T')) : null;
 
     atualizarStatusChamada(d);
     carregarMetrics();
@@ -2505,6 +2833,8 @@ async function carregar(){
             <button type="button" class="order-btn" data-action="move-main" data-direction="1"
               aria-label="Descer ${nome} na fila">↓ <span aria-hidden="true">Descer</span></button>
           </div>
+          <button type="button" class="mini-btn btn-secondary"
+            data-action="issue-recovery" data-id="${id}">Emitir recovery</button>
           <button type="button" class="mini-btn ${fechado ? 'reabrir' : 'fechar'}"
             data-action="toggle-close" data-id="${id}">${fechado ? 'Reabrir' : 'Fechar'}</button>
         </div>
@@ -2969,27 +3299,6 @@ function initMainSortable(){
   });
 }
 
-function contadorToken(){
-  if (!tokenCycleEndAt || isNaN(tokenCycleEndAt.getTime())) {
-    document.getElementById('contador').textContent = '--:--:--';
-    return;
-  }
-
-  const agora = new Date();
-  let diff = Math.floor((tokenCycleEndAt.getTime() - agora.getTime()) / 1000);
-
-  if (diff < 0) diff = 0;
-
-  const dias = Math.floor(diff / 86400);
-  const resto = diff % 86400;
-  const h = String(Math.floor(resto / 3600)).padStart(2,'0');
-  const m = String(Math.floor((resto % 3600) / 60)).padStart(2,'0');
-  const s = String(resto % 60).padStart(2,'0');
-
-  document.getElementById('contador').textContent =
-    (dias > 0 ? `${dias}d ` : '') + `${h}:${m}:${s}`;
-}
-
 document.querySelector('.tabs').addEventListener('click', event=>{
   const tab = event.target.closest('[role="tab"][data-tab]');
   if (tab) abrirAba(tab.dataset.tab, false);
@@ -3010,6 +3319,9 @@ document.querySelector('.tabs').addEventListener('keydown', event=>{
 });
 
 document.getElementById('btnToggle').addEventListener('click', toggleChamada);
+document.getElementById('btnIssueCheckinTicket').addEventListener('click', issueCheckinTicket);
+document.getElementById('btnCopyTicket').addEventListener('click', copyIssuedTicket);
+document.getElementById('btnHideTicket').addEventListener('click', hideIssuedTicket);
 document.getElementById('btnShowManual').addEventListener('click', toggleManualBox);
 document.getElementById('btnClear').addEventListener('click', limpar);
 document.getElementById('btnRefreshDavez').addEventListener('click', ()=>carregarDaVez(true));
@@ -3028,6 +3340,9 @@ document.getElementById('lista').addEventListener('click', event=>{
   const action = button.dataset.action;
   if (action === 'toggle-close') {
     toggleClose(button, Number.parseInt(button.dataset.id || '0', 10));
+  }
+  if (action === 'issue-recovery') {
+    issueRecoveryTicket(button, Number.parseInt(button.dataset.id || '0', 10));
   }
   if (action === 'move-main') {
     moveMainItem(button, Number.parseInt(button.dataset.direction || '0', 10));
@@ -3065,10 +3380,8 @@ document.getElementById('adminDialogLayer').addEventListener('click', event=>{
 document.addEventListener('keydown', handleDialogKeydown);
 
 setInterval(carregar, 12000);
-setInterval(contadorToken, 1000);
 initMainSortable();
 carregar();
-contadorToken();
 carregarRelatorios();
 </script>
 <div class="system-signature">

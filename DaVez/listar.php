@@ -1,63 +1,57 @@
 <?php
+
+declare(strict_types=1);
+
 require_once __DIR__ . '/../src/Security/Bootstrap.php';
+require_once __DIR__ . '/../src/Security/PublicIdentityAuth.php';
 require_once __DIR__ . '/../src/Domain/OperationalCycle.php';
 require_once __DIR__ . '/../src/Domain/OperationalContext.php';
+require_once __DIR__ . '/../src/Http/PublicIdentityView.php';
+
 davez_install_safe_exception_handler();
 davez_require_http_method('GET');
-include_once __DIR__ . "/../config.php";
+
+include __DIR__ . '/../config.php';
 
 date_default_timezone_set('America/Sao_Paulo');
+$conn->query("SET time_zone = '-03:00'");
 $operationalContext = new \DaVez\Domain\OperationalContext(
-  new \DaVez\Domain\OperationalCycle()
+    new \DaVez\Domain\OperationalCycle()
 );
-$dia = $operationalContext->date();
+$operationalDate = $operationalContext->date();
 
-$stmt = $conn->prepare("
-  SELECT id, client_id, nome, entered_at, status, last_action_at, ordem
-  FROM fila_da_vez
-  WHERE dia=?
-  ORDER BY
-    CASE WHEN status='na_fila' THEN 0 ELSE 1 END,
-    ordem ASC,
-    entered_at ASC
-");
+try {
+    $identity = davez_authenticated_public_identity(
+        $conn,
+        $operationalContext
+    );
+    $summary = davez_public_queue_summary(
+        $conn,
+        $operationalDate
+    );
+    $me = null;
 
-if (!$stmt) {
-  davez_send_error(
-    'queue_unavailable',
-    'Fila temporariamente indisponível.',
-    500
-  );
-}
-
-$stmt->bind_param("s", $dia);
-if (!$stmt->execute()) {
-  $stmt->close();
-  davez_send_error(
-    'queue_unavailable',
-    'Fila temporariamente indisponível.',
-    500
-  );
-}
-$res = $stmt->get_result();
-
-$fila = [];
-$daVez = null;
-
-while($r = $res->fetch_assoc()){
-  $fila[] = $r;
-}
-
-foreach($fila as $r){
-  if (($r['status'] ?? '') === 'na_fila') {
-    $daVez = $r;
-    break;
-  }
+    if ($identity !== null) {
+        $identityView = davez_public_identity_me(
+            $conn,
+            $identity,
+            $operationalContext
+        );
+        $me = $identityView['davez'];
+    }
+} catch (Throwable $exception) {
+    davez_send_error(
+        'queue_unavailable',
+        'Fila temporariamente indisponível.',
+        500
+    );
 }
 
 davez_send_json([
-  "ok" => true,
-  "dia" => $dia,
-  "da_vez" => $daVez,
-  "fila" => $fila
+    'ok' => true,
+    'identity_version' => 2,
+    'operational_date' => $operationalDate,
+    'next' => $summary['next'],
+    'me' => $me,
+    'counts' => $summary['counts'],
 ]);

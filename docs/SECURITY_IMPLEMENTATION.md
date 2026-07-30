@@ -2,10 +2,11 @@
 
 ## Estado
 
-Esta fundação implementa a base dos achados F-004 a F-009 e já está integrada
-às rotas administrativas, de check-in, re-login e fila. A integração preserva
-o `client_id` público como compatibilidade temporária; ele não deve evoluir
-para fonte de autenticação ou autorização.
+Esta fundação implementa a base dos achados F-004 a F-009 e a identidade
+pública v2 aprovada. As rotas públicas ativas derivam identidade de uma sessão
+opaca vinculada a `checkin_id`; `client_id` legado não autentica nem autoriza.
+O lote ainda não foi ativado porque migrations e fluxos integrados não foram
+validados em MySQL real e HTTPS.
 
 Validado apenas por leitura estática e testes focados locais.
 
@@ -88,11 +89,10 @@ davez_require_csrf();
 O cliente deve enviar o token em `X-CSRF-Token` ou no campo `_csrf`. O token não
 deve ser aceito por query string. Login bem-sucedido rotaciona sessão e CSRF.
 
-As mutações públicas legadas não recebiam um campo CSRF. Para preservar o
-frontend existente, `session_info.php` cria um contexto de requisição
-host-only, `HttpOnly` e `SameSite=Strict`. `checkin.php`, `relogin.php` e
-`DaVez/entrar.php` exigem esse contexto e rejeitam sinais `cross-site`. O
-contexto não usa `client_id`.
+`session_info.php` cria um contexto de requisição host-only, `HttpOnly` e
+`SameSite=Strict`. `checkin.php`, `recover.php`, `public_logout.php` e
+`DaVez/entrar.php` exigem esse contexto e rejeitam sinais `cross-site`.
+`relogin.php` encerra o fluxo legado com HTTP 410 sem consultar dados.
 
 ### Validação e identidade
 
@@ -148,11 +148,15 @@ substituir por storage centralizado e atômico.
 ## Integração aplicada
 
 - `admin.php`: login/logout por sessão, CSRF, allowlists e rate limiting;
-- `checkin.php`: POST, contexto público, limites e rate limiting;
-- `relogin.php`: POST, contexto público, limites e rate limiting;
-- `session_info.php`: GET, resposta segura e bootstrap do contexto público;
-- `DaVez/entrar.php`: POST, contexto público, limites e rate limiting;
-- `DaVez/listar.php`: GET e respostas sem detalhes internos;
+- `admin.php`: emissão única de ticket de check-in ou recovery vinculado;
+- `checkin.php`: ticket individual, sessão pública, contexto e rate limiting;
+- `recover.php`: recovery administrativo, revogação anterior e nova sessão;
+- `public_logout.php`: logout idempotente com revogação server-side;
+- `relogin.php`: POST legado encerrado com HTTP 410;
+- `session_info.php`: GET estritamente de leitura da identidade pública;
+- `DaVez/entrar.php`: identidade derivada da sessão e fila por `checkin_id`;
+- `DaVez/listar.php`: visão pública mínima `next`/`me`/contadores;
+- `DaVez/listar_admin.php`: listagem completa somente para administrador;
 - `DaVez/reordenar.php`: admin, POST, CSRF, limites e rate limiting;
 - `DaVez/sair.php`: admin, POST, CSRF, limites e rate limiting.
 
@@ -161,13 +165,11 @@ painel envia POST JSON e `X-CSRF-Token` em todas as mutações.
 
 ## Limites desta etapa
 
-- banco, migrations e concorrência da fila não foram alterados;
-- não há integração com MySQL real nesta etapa;
+- migrations aditivas `005..008` foram criadas, mas não executadas;
+- não há integração ou concorrência validada em MySQL real;
 - nenhuma credencial real foi lida ou gravada;
 - nenhum segredo deve ser adicionado a este documento.
-- a listagem pública ainda inclui `client_id` para compatibilidade com o
-  frontend atual; a substituição por identidade de sessão é uma etapa própria;
 - o rate limiter em arquivo é local à instância;
-- `session_info.php` mantém a rotação de token existente durante GET para não
-  alterar a regra do ciclo nesta etapa; separar leitura e rotação continua
-  recomendado.
+- cookies precisam de validação em navegador HTTPS com proxy real;
+- backup, restore, rollback, E2E público/admin e piloto operacional continuam
+  obrigatórios antes do corte.

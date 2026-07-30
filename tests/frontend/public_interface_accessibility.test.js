@@ -49,10 +49,51 @@ function pngDimensions(filePath) {
 requirePattern(/<a class="skip-link" href="#conteudo-principal">/, "deve oferecer atalho para o conteúdo");
 requirePattern(/<main id="conteudo-principal"[^>]*tabindex="-1">/, "o destino do atalho deve aceitar foco");
 requirePattern(/<h1 id="pageTitle">/, "a página deve ter título principal identificável");
+requirePattern(
+  /<a class="admin-access" href="\/admin\.php"[\s\S]*?aria-label="Acessar a área administrativa"/,
+  "deve oferecer acesso semântico e identificável à administração"
+);
+requirePattern(
+  /class="theme-control" role="group" aria-label="Tema da tela"/,
+  "o seletor de tema deve expor um grupo acessível"
+);
+requirePattern(
+  /data-theme-option="light"[\s\S]*?aria-pressed="false">Claro<\/button>/,
+  "o seletor deve oferecer tema claro com estado acessível"
+);
+requirePattern(
+  /data-theme-option="dark"[\s\S]*?aria-pressed="false">Escuro<\/button>/,
+  "o seletor deve oferecer tema escuro com estado acessível"
+);
+requirePattern(
+  /name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/,
+  "o viewport deve ocupar a tela com safe areas no iOS"
+);
+requirePattern(
+  /rel="apple-touch-icon" sizes="192x192" href="\/icons\/icon-192\.png"/,
+  "o ícone da tela inicial do iOS deve declarar sua dimensão"
+);
+requirePattern(
+  /name="apple-mobile-web-app-title" content="DaVez"/,
+  "Android e iOS devem exibir o mesmo nome instalado"
+);
 requirePattern(/<label for="nome">/, "o campo de nome deve ter label real");
-requirePattern(/<label for="token">/, "o campo de token deve ter label real");
+requirePattern(/<label for="accessCode">Código individual<\/label>/, "o código individual deve ter label real");
 requirePattern(/id="nome"[\s\S]*?aria-describedby="nomeHint"[\s\S]*?required/, "nome deve ter ajuda associada e ser obrigatório");
-requirePattern(/id="token"[\s\S]*?aria-describedby="tokenHint"[\s\S]*?required/, "token deve ter ajuda associada e ser obrigatório");
+requirePattern(/id="accessCode"[\s\S]*?autocomplete="one-time-code"[\s\S]*?maxlength="19"[\s\S]*?aria-describedby="accessCodeHint"[\s\S]*?required/, "código individual deve ter ajuda, autocomplete e limite corretos");
+requirePattern(/id="btnRecover"[\s\S]*?aria-describedby="recoverHint"/, "recuperação deve ser acessível");
+requirePattern(
+  /<h2 id="pwaTitle" class="pwa-title">Instalar aplicativo<\/h2>/,
+  "a instalação deve ter heading semântico e permanente"
+);
+requirePattern(
+  /id="pwaText"[^>]*role="status"[^>]*aria-live="polite"[^>]*aria-atomic="true"[^>]*>Você pode instalar este sistema na tela inicial do celular para abrir como app\./,
+  "a orientação de instalação deve ser visível e anunciável"
+);
+assert.ok(
+  html.indexOf('id="pwaBox"') > html.indexOf('id="waitBox"'),
+  "o painel PWA deve permanecer fora dos estados alternáveis do check-in"
+);
 
 // Feedback acessível e estados de aplicação.
 requirePattern(/id="status"[^>]*role="status"[^>]*aria-live="polite"/, "status deve ser anunciado");
@@ -61,6 +102,10 @@ requirePattern(/id="davezState"[^>]*role="status"[^>]*aria-live="polite"/, "esta
 requirePattern(/window\.addEventListener\("offline", updateConnectionState\)/, "deve observar perda de conexão");
 requirePattern(/showServiceWorkerUpdate\(worker\)/, "deve exibir atualização disponível");
 requirePattern(/window\.addEventListener\("appinstalled"/, "deve tratar instalação concluída");
+requirePattern(/function renderPWAInstallState\(state, overrideMessage = ""\)/, "estados PWA devem ter renderização centralizada");
+requirePattern(/try \{[\s\S]*?promptEvent\.prompt\(\)[\s\S]*?catch \(error\)[\s\S]*?finally \{/, "instalação deve restaurar o botão mesmo em falhas");
+requirePattern(/installLabel:\s*"Ver como instalar"/, "prompt consumido deve virar orientação, não ação inerte");
+requirePattern(/Se essa opção não aparecer, abra a página no Safari/, "iOS deve orientar fallback para Safari sem bloquear outros navegadores");
 
 // Modal com nome, descrição, foco contido e fechamento por Escape.
 requirePattern(/id="modalDialog"[\s\S]*?role="dialog"[\s\S]*?aria-modal="true"[\s\S]*?aria-labelledby="modalTitle"[\s\S]*?aria-describedby="modalBody"/, "modal deve expor relações ARIA");
@@ -70,10 +115,23 @@ requirePattern(/document\.body\.classList\.add\("modal-open"\)/, "modal deve con
 
 // Responsividade, foco e preferência de movimento.
 requirePattern(/min-height:\s*100dvh/, "layout deve usar viewport dinâmica");
+requirePattern(/min-height:\s*100vh;[\s\S]*?min-height:\s*100svh;[\s\S]*?min-height:\s*100dvh;/, "layout deve oferecer fallbacks de viewport móvel");
 requirePattern(/env\(safe-area-inset-bottom\)/, "layout deve respeitar safe areas");
+requirePattern(/-webkit-text-size-adjust:\s*100%/, "Safari não deve ampliar texto automaticamente");
+requirePattern(/touch-action:\s*manipulation/, "controles móveis devem responder ao toque sem atraso");
+requirePattern(/\.card-shell\s*\{[\s\S]*?width:\s*100%;[\s\S]*?max-width:\s*32\.8rem;/, "cartão não deve depender de min() para largura móvel");
+requirePattern(/\.logo-top img\s*\{[\s\S]*?width:\s*10\.25rem;[\s\S]*?max-width:\s*56vw;/, "logo deve manter largura estável em flexbox móvel");
 requirePattern(/:focus-visible/, "controles devem ter foco visível");
 requirePattern(/@media \(max-width:\s*23\.75rem\)/, "deve haver ajuste explícito para 380px ou menos");
-requirePattern(/@media \(prefers-color-scheme:\s*dark\)/, "deve oferecer dark mode nativo");
+requirePattern(/:root\[data-theme="dark"\]/, "deve oferecer dark mode selecionável");
+requirePattern(/window\.matchMedia\("\(prefers-color-scheme: dark\)"\)/, "primeiro acesso deve respeitar o tema do sistema");
+requirePattern(/const THEME_STORAGE_KEY = "davez_theme";/, "preferência de tema deve usar chave estável");
+requirePattern(/function applyTheme\(theme, persist = false\)/, "mudança de tema deve ter aplicação centralizada");
+requirePattern(/localStorage\.setItem\(THEME_STORAGE_KEY, normalizedTheme\)/, "tema escolhido deve persistir no navegador");
+requirePattern(/function readStoredTheme\(\)/, "preferência persistida deve ser validada antes do uso");
+requirePattern(/window\.addEventListener\("storage"/, "tema deve ser sincronizado entre abas");
+requirePattern(/function observeMediaQuery\(mediaQuery, listener\)/, "Safari antigo deve ter compatibilidade com MediaQueryList");
+requirePattern(/mediaQuery\.addListener\(listener\)/, "fallback legado do Safari deve ser preservado");
 requirePattern(/@media \(prefers-reduced-motion:\s*reduce\)/, "deve respeitar redução de movimento");
 assert.doesNotMatch(html, /z-index:\s*999\d/, "não deve usar z-index arbitrário");
 
@@ -89,7 +147,13 @@ for (const className of [
   "container",
   "card-shell",
   "card",
+  "access-header",
+  "header-actions",
+  "theme-control",
+  "theme-option",
   "logo-top",
+  "admin-access",
+  "admin-access-icon",
   "app-state",
   "app-state-dot",
   "app-state-content",
@@ -101,9 +165,14 @@ for (const className of [
   "status",
   "small",
   "pwa-box",
+  "pwa-visual",
+  "pwa-copy",
+  "pwa-kicker",
+  "pwa-actions",
   "pwa-title",
   "pwa-text",
   "pwa-btn",
+  "pwa-btn-icon",
   "ios",
   "wait-box",
   "wait-header",
@@ -159,19 +228,20 @@ for (const className of [
 
 // Contratos existentes continuam estáveis.
 for (const endpoint of [
-  'const CHECKIN_URL = "checkin.php?v=3";',
-  'const DAVEZ_ENTER_URL = "DaVez/entrar.php?v=1";',
-  'const DAVEZ_LIST_URL = "DaVez/listar.php?v=1";',
-  'const RELOGIN_URL = "relogin.php?v=1";',
-  'const SESSION_INFO_URL = "session_info.php?v=1";',
+  'const CHECKIN_URL = "checkin.php?v=4";',
+  'const DAVEZ_ENTER_URL = "DaVez/entrar.php?v=2";',
+  'const DAVEZ_LIST_URL = "DaVez/listar.php?v=2";',
+  'const RECOVER_URL = "recover.php?v=1";',
+  'const SESSION_INFO_URL = "session_info.php?v=2";',
 ]) {
   assert.ok(html.includes(endpoint), `endpoint preservado: ${endpoint}`);
 }
 
 for (const id of [
   "nome",
-  "token",
+  "accessCode",
   "btn",
+  "btnRecover",
   "status",
   "formBox",
   "waitBox",
@@ -186,9 +256,10 @@ assert.ok(!html.includes("await caches.keys()"), "a interface não deve apagar t
 assert.doesNotMatch(html, /id="btnInstalar(App|IOS)"[^>]*style=/, "botões de instalação não devem usar estilo inline");
 
 // JavaScript embarcado deve continuar sintaticamente válido.
-const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
-assert.ok(scriptMatch, "script principal não encontrado");
-new vm.Script(scriptMatch[1], { filename: "index.html:inline-script.js" });
+const scriptBlocks = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+  .map(match => match[1]);
+assert.ok(scriptBlocks.length >= 2, "scripts de tema e aplicação devem existir");
+new vm.Script(scriptBlocks.join("\n"), { filename: "index.html:inline-scripts.js" });
 
 // Cores essenciais devem atingir WCAG AA para texto normal.
 assert.ok(contrastRatio("#164fc9", "#ffffff") >= 4.5, "botão azul deve ter contraste AA com texto branco");
@@ -202,6 +273,14 @@ assert.equal(manifest.name, "DaVez — Fila de Motoboys");
 assert.equal(manifest.short_name, "DaVez");
 assert.equal(manifest.background_color, "#f4f6fa");
 assert.equal(manifest.theme_color, "#f4f6fa");
+assert.equal(manifest.orientation, "any");
+
+for (const requiredSize of ["192x192", "512x512"]) {
+  const icon = manifest.icons.find(candidate => candidate.sizes === requiredSize);
+  assert.ok(icon, `manifesto deve oferecer ícone ${requiredSize}`);
+  assert.match(icon.purpose, /\bany\b/, `${requiredSize} deve funcionar como ícone padrão`);
+  assert.match(icon.purpose, /\bmaskable\b/, `${requiredSize} deve funcionar como ícone adaptável no Android`);
+}
 
 for (const icon of manifest.icons) {
   const dimensions = pngDimensions(path.join(projectRoot, icon.src.replace(/^\//, "")));
