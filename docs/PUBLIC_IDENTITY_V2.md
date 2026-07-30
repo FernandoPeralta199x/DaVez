@@ -78,8 +78,10 @@ O administrador emitirá um ticket para uma finalidade específica:
 
 Características implementadas:
 
-- código Crockford Base32 individual de 16 caracteres, digitável; QR individual
-  pode transportar o mesmo código em etapa posterior;
+- código Crockford Base32 individual de 16 caracteres, digitável;
+- QR individual transporta a URL pública com o mesmo código no fragmento
+  `#access_code`; o fragmento é removido do endereço pelo frontend antes de
+  qualquer requisição;
 - validade exata de 10 minutos;
 - consumo único e atômico;
 - rate limiting por rede e contexto;

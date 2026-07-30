@@ -1843,6 +1843,38 @@ function clearStatus() {
   el.classList.remove("show");
 }
 
+function applyAccessCodeFromFragment() {
+  const fragment = window.location.hash.startsWith("#")
+    ? window.location.hash.slice(1)
+    : "";
+  const fragmentParams = new URLSearchParams(fragment);
+  if (!fragmentParams.has("access_code")) return false;
+
+  const cleanAddress = `${window.location.pathname}${window.location.search}`;
+  window.history.replaceState(null, document.title, cleanAddress || "/");
+
+  const accessCode = (fragmentParams.get("access_code") || "")
+    .trim()
+    .toUpperCase();
+  if (
+    !/^[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){3}$/.test(accessCode)
+  ) {
+    setStatus(
+      "O QR individual não contém um código válido. Solicite um novo código à equipe.",
+      "error"
+    );
+    return false;
+  }
+
+  const accessCodeField = document.getElementById("accessCode");
+  accessCodeField.value = accessCode;
+  setStatus(
+    "Código individual preenchido pelo QR. Informe seu nome para continuar.",
+    "success"
+  );
+  return true;
+}
+
 class PublicApiError extends Error {
   constructor(message, code="request_failed", status=0) {
     super(message);
@@ -2825,6 +2857,7 @@ window.addEventListener("beforeinstallprompt", (e) => {
 
 document.addEventListener("DOMContentLoaded", () => {
   applyTheme(document.documentElement.dataset.theme || "light");
+  applyAccessCodeFromFragment();
   document.querySelectorAll("[data-theme-option]").forEach((option) => {
     option.addEventListener("click", () => {
       applyTheme(option.dataset.themeOption, true);

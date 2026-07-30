@@ -93,7 +93,7 @@ não foi validada em MySQL real, navegador HTTPS nem ativada.
 |---|---|---|---|---|
 | DEC-PID2-01 | APROVADA | Recuperação exclusivamente administrativa/presencial | Implementada no lote local | Validar procedimento no piloto |
 | DEC-PID2-02 | APROVADA | Uma sessão ativa por check-in | Constraint e revogação implementadas | Validar concorrência MySQL |
-| DEC-PID2-03 | APROVADA | QR individual com código digitável de fallback | Código implementado; QR externo fora deste lote | Validar distribuição operacional |
+| DEC-PID2-03 | APROVADA | QR individual com código digitável de fallback | QR local e código implementados no painel | Validar leitura e distribuição em Android/iOS |
 | DEC-PID2-04 | APROVADA | Corte completo no início de um ciclo | Plano documentado | Ensaiar janela e rollback |
 | DEC-PID2-05 | APROVADA | Apenas próximo chamado e visão `me` no público | Contrato implementado | Validar E2E |
 | DEC-PID2-06 | APROVADA | Até o fim do ciclo, máximo de 24 horas | Regra e unidade implementadas | Validar timezone integrado |
