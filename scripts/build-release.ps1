@@ -43,6 +43,7 @@ $releaseDirectories = @(
     'docs',
     'icons',
     'img',
+    'js',
     'src'
 )
 

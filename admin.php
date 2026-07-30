@@ -395,6 +395,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
     'add_manual' => ['acao', 'nome', 'obs', '_csrf'],
     'issue_checkin_ticket' => ['acao', '_csrf'],
     'issue_recovery_ticket' => ['acao', 'id', '_csrf'],
+    'ticket_status' => ['acao', 'access_code', '_csrf'],
   ];
 
   if (!isset($allowedJsonFields[$acao])) {
@@ -432,6 +433,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
       ['sucesso'=>false,'erro'=>'Muitas ações. Aguarde e tente novamente.'],
       429
     );
+  }
+
+  if ($acao === 'ticket_status') {
+    try {
+      $accessCode = davez_input_string(
+        $input,
+        'access_code',
+        16,
+        32
+      );
+      $ticketStatus = davez_public_identity_store($conn)->findTicketStatus(
+        davez_public_ticket_hash($accessCode),
+        $operationalDate,
+        $operationalContext->reference()
+      );
+    } catch (InvalidArgumentException $exception) {
+      json_out([
+        'sucesso' => false,
+        'erro' => 'Código individual inválido.'
+      ], 400);
+    } catch (RuntimeException $exception) {
+      json_out([
+        'sucesso' => false,
+        'erro' => 'Estado do código temporariamente indisponível.'
+      ], 503);
+    }
+
+    if ($ticketStatus === null) {
+      json_out([
+        'sucesso' => false,
+        'erro' => 'Código individual não encontrado no ciclo atual.'
+      ], 404);
+    }
+
+    json_out([
+      'sucesso' => true,
+      'purpose' => $ticketStatus['purpose'],
+      'ticket_state' => $ticketStatus['state'],
+      'expires_at' => $ticketStatus['expires_at']->format(DATE_ATOM),
+    ]);
   }
 
   if (
@@ -1550,7 +1591,7 @@ button:disabled{cursor:not-allowed;opacity:.48}
 }
 .tabs{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(6,minmax(0,1fr));
   gap:6px;
 }
 .tab{
@@ -1595,6 +1636,199 @@ button:disabled{cursor:not-allowed;opacity:.48}
 .ticket-result p{margin:5px 0;color:#c4d2cd}
 .ticket-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}
 .ticket-actions button{flex:1;min-width:160px}
+.qr-panel{
+  border-color:color-mix(in srgb,var(--accent) 38%,var(--line));
+}
+.qr-section-heading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:20px;
+  margin-bottom:22px;
+}
+.qr-section-heading p{max-width:64ch;color:var(--ink-soft)}
+.qr-local-badge{
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  min-height:32px;
+  padding:6px 10px;
+  border:1px solid color-mix(in srgb,var(--success) 38%,var(--line));
+  border-radius:9px;
+  background:var(--success-soft);
+  color:var(--success);
+  font-size:.72rem;
+  font-weight:850;
+  letter-spacing:.055em;
+  text-transform:uppercase;
+}
+.qr-layout{
+  display:grid;
+  grid-template-columns:minmax(240px,.72fr) minmax(320px,1.28fr);
+  align-items:center;
+  gap:clamp(22px,5vw,64px);
+}
+.qr-figure{
+  width:min(100%,360px);
+  margin:0;
+}
+.qr-frame{
+  display:grid;
+  place-items:center;
+  padding:clamp(14px,3vw,24px);
+  border:1px solid var(--line-strong);
+  border-radius:var(--radius-lg);
+  background:#fff;
+  box-shadow:inset 0 0 0 1px rgba(13,27,23,.05);
+}
+.qr-canvas{
+  display:block;
+  width:100%;
+  height:auto;
+  aspect-ratio:1;
+  image-rendering:pixelated;
+}
+.qr-figure figcaption{
+  margin-top:9px;
+  color:var(--ink-soft);
+  font-size:.78rem;
+  text-align:center;
+}
+.qr-details{min-width:0}
+.qr-url{
+  display:block;
+  margin:10px 0 18px;
+  padding:14px 15px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:var(--canvas-deep);
+  color:var(--ink);
+  font-family:"Cascadia Mono","SFMono-Regular",Consolas,monospace;
+  font-size:.84rem;
+  overflow-wrap:anywhere;
+}
+.qr-facts{
+  display:grid;
+  gap:9px;
+  margin:0 0 20px;
+  padding:0;
+  list-style:none;
+}
+.qr-facts li{
+  display:grid;
+  grid-template-columns:18px minmax(0,1fr);
+  gap:9px;
+  color:var(--ink-soft);
+  font-size:.88rem;
+}
+.qr-facts li::before{
+  content:"";
+  width:7px;
+  height:7px;
+  margin-top:.48em;
+  border-radius:2px;
+  background:var(--accent);
+}
+.qr-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:9px;
+}
+.qr-actions button{flex:1;min-width:148px}
+.qr-empty-state{
+  display:grid;
+  place-items:center;
+  min-height:180px;
+  margin-top:18px;
+  padding:28px;
+  border:1px dashed var(--line-strong);
+  border-radius:var(--radius-lg);
+  color:var(--ink-soft);
+  text-align:center;
+}
+.qr-empty-state[hidden]{display:none}
+.qr-ticket-result{
+  background:var(--surface-raised);
+  color:var(--ink);
+}
+.qr-ticket-result p{color:var(--ink-soft)}
+.ticket-result-heading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:16px;
+}
+.ticket-result-heading strong{display:block;margin-top:4px}
+.ticket-state{
+  display:inline-flex;
+  align-items:center;
+  min-height:30px;
+  padding:5px 10px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  font-size:.72rem;
+  font-weight:850;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+.ticket-state[data-state="active"]{
+  border-color:color-mix(in srgb,var(--success) 38%,var(--line));
+  background:var(--success-soft);
+  color:var(--success);
+}
+.ticket-state[data-state="consumed"]{
+  border-color:color-mix(in srgb,var(--accent) 42%,var(--line));
+  background:var(--accent-soft);
+  color:var(--accent-strong);
+}
+.ticket-state[data-state="expired"],
+.ticket-state[data-state="revoked"],
+.ticket-state[data-state="unknown"]{
+  border-color:color-mix(in srgb,var(--danger) 38%,var(--line));
+  background:var(--danger-soft);
+  color:var(--danger);
+}
+.individual-qr-layout{
+  display:grid;
+  grid-template-columns:minmax(280px,1fr) minmax(200px,300px);
+  align-items:center;
+  gap:clamp(18px,4vw,42px);
+}
+.individual-qr-copy{min-width:0}
+.individual-qr-copy output{
+  margin-top:10px;
+  color:var(--code-ink);
+}
+.ticket-validity{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+  margin:16px 0;
+}
+.ticket-validity div{
+  padding:11px 12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--canvas-deep);
+}
+.ticket-validity span{
+  display:block;
+  color:var(--ink-soft);
+  font-size:.7rem;
+  font-weight:800;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+.ticket-validity time,
+.ticket-validity strong{
+  display:block;
+  margin-top:4px;
+  color:var(--ink);
+  font-size:.86rem;
+}
+.individual-qr-figure{width:min(100%,300px);justify-self:end}
+.qr-print-sheet{display:none}
 .dash{
   display:grid;
   grid-template-columns:repeat(6,minmax(0,1fr));
@@ -1619,6 +1853,88 @@ button:disabled{cursor:not-allowed;opacity:.48}
 }
 .card h2,.card h3{margin:0 0 8px;letter-spacing:-.02em}
 .card p{margin:8px 0 16px}
+.support-panel{
+  border-color:color-mix(in srgb,var(--accent) 34%,var(--line));
+}
+.support-heading{
+  display:grid;
+  grid-template-columns:minmax(220px,.75fr) minmax(280px,1.25fr);
+  align-items:end;
+  gap:clamp(18px,4vw,52px);
+  margin-bottom:24px;
+}
+.support-heading h2{margin-bottom:0}
+.support-heading .support-intro{
+  max-width:62ch;
+  margin:0;
+  color:var(--ink-soft);
+}
+.support-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  margin:0;
+  font-style:normal;
+}
+.support-card{
+  display:flex;
+  min-width:0;
+  min-height:240px;
+  flex-direction:column;
+  padding:20px;
+  border:1px solid var(--line);
+  border-top:3px solid var(--accent);
+  border-radius:var(--radius-lg);
+  background:var(--surface-raised);
+}
+.support-label{
+  color:var(--ink-soft);
+  font-size:.7rem;
+  font-weight:850;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+.support-value{
+  display:block;
+  margin-top:8px;
+  color:var(--ink);
+  font-size:clamp(1rem,2vw,1.22rem);
+  letter-spacing:-.015em;
+  overflow-wrap:anywhere;
+}
+.support-card p{
+  color:var(--ink-soft);
+  font-size:.88rem;
+}
+.support-action{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:44px;
+  margin-top:auto;
+  padding:10px 14px;
+  border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));
+  border-radius:11px;
+  background:color-mix(in srgb,var(--accent-soft) 78%,var(--surface-raised));
+  color:var(--accent-strong);
+  font-weight:800;
+  text-decoration:none;
+  transition:transform .2s var(--ease),background-color .2s var(--ease),border-color .2s var(--ease);
+}
+.support-action:hover{
+  border-color:var(--accent);
+  background:var(--accent-soft);
+  transform:translateY(-1px);
+}
+.support-action:active{transform:translateY(1px)}
+.support-note{
+  margin:18px 0 0 !important;
+  padding-top:16px;
+  border-top:1px solid var(--line);
+  color:var(--ink-soft);
+  font-size:.82rem;
+}
 .dash .k{
   color:var(--ink-soft);
   font-size:.72rem;
@@ -1878,6 +2194,7 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
   border:0;
 }
 @media (max-width:900px){
+  .tabs{grid-template-columns:repeat(3,minmax(0,1fr))}
   .dash{grid-template-columns:repeat(2,minmax(0,1fr))}
   .dash .mcard:first-child{grid-column:span 2}
   .row{grid-template-columns:1fr 1fr}
@@ -1885,6 +2202,9 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
   .row-action button{width:100%}
   .queue-item,.dv-item,.report-item{align-items:flex-start;flex-direction:column}
   .item-actions{width:100%;justify-content:flex-end}
+  .support-heading{grid-template-columns:1fr;align-items:start}
+  .qr-layout,.individual-qr-layout{grid-template-columns:1fr}
+  .qr-figure,.individual-qr-figure{justify-self:center}
 }
 @media (max-width:640px){
   .container{padding:16px 12px 40px}
@@ -1905,6 +2225,11 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
   .order-actions .order-btn{flex:1}
   .dialog-actions{flex-direction:column-reverse}
   .dialog-actions button{width:100%}
+  .support-grid{grid-template-columns:1fr}
+  .support-card{min-height:0}
+  .qr-section-heading,.ticket-result-heading{flex-direction:column}
+  .qr-actions button{min-width:100%}
+  .ticket-validity{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
@@ -1913,6 +2238,33 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
     transition-duration:.01ms !important;
     animation-duration:.01ms !important;
     animation-iteration-count:1 !important;
+  }
+}
+@media print{
+  @page{margin:14mm}
+  body.qr-printing{background:#fff;color:#111}
+  body.qr-printing > :not(.qr-print-sheet){display:none !important}
+  body.qr-printing .qr-print-sheet{
+    display:grid !important;
+    min-height:250mm;
+    place-items:center;
+    align-content:center;
+    gap:8mm;
+    color:#111;
+    text-align:center;
+  }
+  .qr-print-sheet img{
+    width:92mm;
+    height:92mm;
+    image-rendering:pixelated;
+  }
+  .qr-print-sheet h1{margin:0;font-size:22pt}
+  .qr-print-sheet p{
+    max-width:150mm;
+    margin:0;
+    font-family:"Cascadia Mono","SFMono-Regular",Consolas,monospace;
+    font-size:10pt;
+    overflow-wrap:anywhere;
   }
 }
 </style>
@@ -1953,36 +2305,19 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
         aria-controls="config" aria-selected="false" tabindex="-1" data-tab="config">
         <span aria-hidden="true">⚙️</span> Configurações
       </button>
+      <button type="button" class="tab" id="tab-qrcode" role="tab"
+        aria-controls="qrcode" aria-selected="false" tabindex="-1" data-tab="qrcode">
+        <span aria-hidden="true">▦</span> QR Code
+      </button>
+      <button type="button" class="tab" id="tab-suporte" role="tab"
+        aria-controls="suporte" aria-selected="false" tabindex="-1" data-tab="suporte">
+        <span aria-hidden="true">✉️</span> Suporte
+      </button>
     </div>
   </nav>
 
   <section id="chamada" class="section active" role="tabpanel"
     aria-labelledby="tab-chamada" tabindex="0">
-    <section class="card ticket-panel" aria-labelledby="individual-codes-title">
-      <div class="toolbar">
-        <div>
-          <p class="eyebrow">Acesso público v2</p>
-          <h2 id="individual-codes-title">Códigos individuais</h2>
-          <p><small class="mini">Emita um código para novo check-in ou um recovery vinculado a um registro existente.</small></p>
-        </div>
-        <button type="button" class="btn-primary" id="btnIssueCheckinTicket">
-          Emitir código de check-in
-        </button>
-      </div>
-      <p class="mini">QR externo não faz parte deste lote. Entregue o código individual como fallback e confirme o destinatário.</p>
-      <div class="ticket-result" id="issuedTicketResult" role="status"
-        aria-live="polite" aria-atomic="true" tabindex="-1" hidden>
-        <strong id="issuedTicketPurpose">Código emitido</strong>
-        <output id="issuedAccessCode"></output>
-        <p>Expira em <time id="issuedTicketExpiry"></time>.</p>
-        <p id="issuedTicketWarning"></p>
-        <div class="ticket-actions">
-          <button type="button" class="btn-primary" id="btnCopyTicket">Copiar código</button>
-          <button type="button" class="btn-secondary" id="btnHideTicket">Ocultar código</button>
-        </div>
-      </div>
-    </section>
-
     <div class="dash" id="dash" aria-label="Métricas do ciclo" aria-busy="true">
       <article class="mcard">
         <div class="k">Chamada</div>
@@ -2129,7 +2464,171 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
       </form>
     </section>
   </section>
+
+  <section id="qrcode" class="section" role="tabpanel"
+    aria-labelledby="tab-qrcode" tabindex="0" hidden>
+    <section class="card qr-panel" aria-labelledby="permanent-qr-title">
+      <div class="qr-section-heading">
+        <div>
+          <p class="eyebrow">Acesso fixo da loja</p>
+          <h2 id="permanent-qr-title">QR permanente de acesso</h2>
+          <p>
+            Este QR contém somente o endereço público. Ele pode ser impresso e
+            colocado na loja; cada motoboy ainda informa seu código individual.
+          </p>
+        </div>
+        <span class="qr-local-badge">Geração local</span>
+      </div>
+
+      <div class="qr-layout">
+        <figure class="qr-figure">
+          <div class="qr-frame">
+            <canvas class="qr-canvas" id="permanentQrCanvas" width="640" height="640"
+              role="img" aria-label="QR Code permanente para abrir a tela pública DaVez">
+              Seu navegador não conseguiu exibir o QR Code.
+            </canvas>
+          </div>
+          <figcaption>Visualizar QR permanente</figcaption>
+        </figure>
+
+        <div class="qr-details">
+          <p class="eyebrow">Endereço público</p>
+          <output class="qr-url" id="publicQrUrl" aria-live="polite"></output>
+          <ul class="qr-facts">
+            <li>Não contém senha, sessão, identificação do motoboy ou código individual.</li>
+            <li>Permanece válido enquanto o endereço público do sistema não mudar.</li>
+            <li>A leitura abre diretamente a tela de cadastro e check-in.</li>
+          </ul>
+          <div class="qr-actions">
+            <button type="button" class="btn-primary" id="btnDownloadPermanentQr">Baixar PNG</button>
+            <button type="button" class="btn-secondary" id="btnPrintPermanentQr">Imprimir</button>
+            <button type="button" class="btn-secondary" id="btnCopyPublicUrl">Copiar endereço</button>
+          </div>
+          <p class="mini" id="permanentQrState" role="status" aria-live="polite">
+            Preparando QR permanente…
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card ticket-panel" aria-labelledby="individual-codes-title">
+      <div class="qr-section-heading">
+        <div>
+          <p class="eyebrow">Acesso público v2</p>
+          <h2 id="individual-codes-title">Código e QR individual</h2>
+          <p>
+            Gere um acesso de uso único para um novo check-in. O código digitável
+            continua disponível como alternativa à leitura do QR.
+          </p>
+        </div>
+        <button type="button" class="btn-primary" id="btnIssueCheckinTicket">
+          Gerar código/QR individual
+        </button>
+      </div>
+
+      <div class="qr-empty-state" id="individualQrEmpty">
+        Nenhum código individual foi emitido nesta sessão administrativa.
+      </div>
+
+      <div class="ticket-result qr-ticket-result" id="issuedTicketResult"
+        role="status" aria-live="polite" aria-atomic="true" tabindex="-1" hidden>
+        <div class="ticket-result-heading">
+          <div>
+            <span class="eyebrow">Código individual</span>
+            <strong id="issuedTicketPurpose">Código emitido</strong>
+          </div>
+          <span class="ticket-state" id="issuedTicketState" data-state="active">Ativo</span>
+        </div>
+
+        <div class="individual-qr-layout">
+          <div class="individual-qr-copy">
+            <output id="issuedAccessCode"></output>
+            <div class="ticket-validity">
+              <div>
+                <span>Válido até</span>
+                <time id="issuedTicketExpiry"></time>
+              </div>
+              <div>
+                <span>Tempo restante</span>
+                <strong id="issuedTicketCountdown">--:--</strong>
+              </div>
+            </div>
+            <p id="issuedTicketWarning"></p>
+          </div>
+
+          <figure class="qr-figure individual-qr-figure">
+            <div class="qr-frame">
+              <canvas class="qr-canvas" id="individualQrCanvas" width="640" height="640"
+                role="img" aria-label="QR Code individual ainda não emitido">
+                Seu navegador não conseguiu exibir o QR Code individual.
+              </canvas>
+            </div>
+            <figcaption>O endereço com o código é removido da barra após a leitura.</figcaption>
+          </figure>
+        </div>
+
+        <div class="ticket-actions">
+          <button type="button" class="btn-primary" id="btnCopyTicket">Copiar código</button>
+          <button type="button" class="btn-secondary" id="btnDownloadIndividualQr">Baixar QR</button>
+          <button type="button" class="btn-secondary" id="btnPrintIndividualQr">Imprimir QR</button>
+          <button type="button" class="btn-secondary" id="btnHideTicket">Ocultar código</button>
+        </div>
+      </div>
+    </section>
+  </section>
+
+  <section id="suporte" class="section" role="tabpanel"
+    aria-labelledby="tab-suporte" tabindex="0" hidden>
+    <section class="card support-panel" aria-labelledby="support-title">
+      <div class="support-heading">
+        <div>
+          <p class="eyebrow">Contato direto</p>
+          <h2 id="support-title">Suporte DaVez</h2>
+        </div>
+        <p class="support-intro">
+          Precisa de ajuda com acesso, configuração ou operação? Fale diretamente com Fernando.
+        </p>
+      </div>
+
+      <address class="support-grid">
+        <article class="support-card">
+          <span class="support-label">E-mail</span>
+          <strong class="support-value">fernando.augusto.peralta@gmail.com</strong>
+          <p>Para dúvidas detalhadas, registros de erro e solicitações que podem ser respondidas por escrito.</p>
+          <a class="support-action" href="mailto:fernando.augusto.peralta@gmail.com"
+            aria-label="Enviar e-mail para o suporte DaVez">
+            <span>Enviar e-mail</span>
+            <span aria-hidden="true">↗</span>
+          </a>
+        </article>
+
+        <article class="support-card">
+          <span class="support-label">WhatsApp</span>
+          <strong class="support-value">+55 (48) 9 9216-3264</strong>
+          <p>Para contato rápido durante a operação e orientação sobre o uso do painel.</p>
+          <a class="support-action"
+            href="https://wa.me/5548992163264?text=Ol%C3%A1%2C%20Fernando.%20Preciso%20de%20suporte%20no%20DaVez."
+            target="_blank" rel="noopener noreferrer"
+            aria-label="Abrir conversa com o suporte DaVez no WhatsApp em uma nova aba">
+            <span>Abrir WhatsApp</span>
+            <span aria-hidden="true">↗</span>
+          </a>
+        </article>
+      </address>
+
+      <p class="support-note">
+        Para sua segurança, não envie senhas, códigos individuais, tokens ou dados pessoais desnecessários.
+      </p>
+    </section>
+  </section>
 </main>
+
+<section class="qr-print-sheet" id="qrPrintSheet" aria-hidden="true">
+  <img id="qrPrintImage" alt="QR Code DaVez para impressão">
+  <h1 id="qrPrintTitle">DaVez</h1>
+  <p id="qrPrintValue"></p>
+  <p id="qrPrintInstruction"></p>
+</section>
 
 <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
@@ -2146,6 +2645,7 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+<script src="js/qrcode-generator-1.4.4.min.js"></script>
 <script>
 let carregando = false;
 let pausado = false;
@@ -2164,6 +2664,9 @@ let toastTimer = null;
 let dialogResolver = null;
 let dialogPreviousFocus = null;
 let sessionRedirecting = false;
+let permanentQrReady = false;
+let currentIssuedTicket = null;
+let ticketStatusChecking = false;
 
 class AdminRequestError extends Error {
   constructor(message, status=0, data=null){
@@ -2283,6 +2786,7 @@ function abrirAba(id, moveFocus=false){
 
   if (moveFocus) selectedTab.focus();
   if (id === 'davez') carregarDaVez(true);
+  if (id === 'qrcode') initializePermanentQr();
 }
 
 function escapeHtml(str){
@@ -2485,14 +2989,258 @@ async function salvar(){
   }
 }
 
+function getPublicAppUrl(){
+  const publicUrl = new URL('./', window.location.href);
+  publicUrl.search = '';
+  publicUrl.hash = '';
+  return publicUrl.href;
+}
+
+function getIndividualAccessUrl(accessCode){
+  const publicUrl = new URL(getPublicAppUrl());
+  publicUrl.hash = new URLSearchParams({
+    access_code:accessCode
+  }).toString();
+  return publicUrl.href;
+}
+
+function renderQrToCanvas(canvas, value, accessibleLabel){
+  if (!canvas || typeof window.qrcode !== 'function') {
+    throw new Error('qr_generator_unavailable');
+  }
+
+  const qr = window.qrcode(0, 'M');
+  qr.addData(value);
+  qr.make();
+
+  const context = canvas.getContext('2d', {alpha:false});
+  if (!context) throw new Error('canvas_unavailable');
+
+  const canvasSize = 640;
+  const quietZoneModules = 4;
+  const moduleCount = qr.getModuleCount();
+  const cellSize = Math.floor(
+    canvasSize / (moduleCount + quietZoneModules * 2)
+  );
+  const renderedSize = cellSize * moduleCount;
+  const offset = Math.floor((canvasSize - renderedSize) / 2);
+
+  canvas.width = canvasSize;
+  canvas.height = canvasSize;
+  context.imageSmoothingEnabled = false;
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvasSize, canvasSize);
+  context.fillStyle = '#07100d';
+
+  for (let row = 0; row < moduleCount; row += 1) {
+    for (let column = 0; column < moduleCount; column += 1) {
+      if (!qr.isDark(row, column)) continue;
+      context.fillRect(
+        offset + column * cellSize,
+        offset + row * cellSize,
+        cellSize,
+        cellSize
+      );
+    }
+  }
+
+  canvas.setAttribute('aria-label', accessibleLabel);
+}
+
+function clearQrCanvas(canvas){
+  if (!canvas) return;
+  const context = canvas.getContext('2d', {alpha:false});
+  if (!context) return;
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function initializePermanentQr(){
+  if (permanentQrReady) return;
+
+  const publicUrl = getPublicAppUrl();
+  const state = document.getElementById('permanentQrState');
+  document.getElementById('publicQrUrl').textContent = publicUrl;
+
+  try {
+    renderQrToCanvas(
+      document.getElementById('permanentQrCanvas'),
+      publicUrl,
+      `QR Code permanente para abrir ${publicUrl}`
+    );
+    permanentQrReady = true;
+    state.textContent = 'QR permanente pronto para baixar ou imprimir.';
+  } catch (error) {
+    state.textContent =
+      'Não foi possível gerar o QR neste navegador. Use o endereço público exibido.';
+    document.getElementById('btnDownloadPermanentQr').disabled = true;
+    document.getElementById('btnPrintPermanentQr').disabled = true;
+  }
+}
+
+async function copyTextValue(value, selectionTarget, successMessage){
+  try {
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+      throw new Error('clipboard_unavailable');
+    }
+    await navigator.clipboard.writeText(value);
+    showToast(successMessage);
+  } catch (error) {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(selectionTarget);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    showToast(
+      'Cópia automática indisponível. O conteúdo foi selecionado para cópia manual.',
+      false,
+      4200
+    );
+  }
+}
+
+function downloadQrCanvas(canvas, filename){
+  if (!canvas || typeof canvas.toDataURL !== 'function') {
+    showToast('A imagem do QR não está disponível.', false);
+    return;
+  }
+
+  const downloadLink = document.createElement('a');
+  downloadLink.href = canvas.toDataURL('image/png');
+  downloadLink.download = filename;
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  downloadLink.remove();
+}
+
+function clearQrPrintSheet(){
+  document.body.classList.remove('qr-printing');
+  const sheet = document.getElementById('qrPrintSheet');
+  sheet.setAttribute('aria-hidden', 'true');
+  document.getElementById('qrPrintImage').removeAttribute('src');
+}
+
+function printQrCanvas(canvas, title, value, instruction){
+  if (!canvas || typeof canvas.toDataURL !== 'function') {
+    showToast('A imagem do QR não está disponível para impressão.', false);
+    return;
+  }
+
+  document.getElementById('qrPrintImage').src = canvas.toDataURL('image/png');
+  document.getElementById('qrPrintTitle').textContent = title;
+  document.getElementById('qrPrintValue').textContent = value;
+  document.getElementById('qrPrintInstruction').textContent = instruction;
+  document.getElementById('qrPrintSheet').setAttribute('aria-hidden', 'false');
+  document.body.classList.add('qr-printing');
+  window.print();
+  window.setTimeout(clearQrPrintSheet, 60000);
+}
+
+function copyPublicQrUrl(){
+  const output = document.getElementById('publicQrUrl');
+  const publicUrl = output.textContent.trim() || getPublicAppUrl();
+  copyTextValue(publicUrl, output, 'Endereço público copiado.');
+}
+
+function downloadPermanentQr(){
+  if (!permanentQrReady) {
+    showToast('O QR permanente ainda não está disponível.', false);
+    return;
+  }
+  downloadQrCanvas(
+    document.getElementById('permanentQrCanvas'),
+    'davez-acesso-permanente.png'
+  );
+}
+
+function printPermanentQr(){
+  if (!permanentQrReady) {
+    showToast('O QR permanente ainda não está disponível.', false);
+    return;
+  }
+  printQrCanvas(
+    document.getElementById('permanentQrCanvas'),
+    'Acesse o DaVez',
+    getPublicAppUrl(),
+    'Leia o QR e informe seu nome e código individual para fazer o check-in.'
+  );
+}
+
+const TICKET_STATE_LABELS = Object.freeze({
+  active:'Ativo',
+  consumed:'Utilizado',
+  expired:'Expirado',
+  revoked:'Revogado',
+  unknown:'Verificação indisponível'
+});
+
+function updateTicketActionAvailability(){
+  const hasTicket = currentIssuedTicket !== null;
+  const active = hasTicket && currentIssuedTicket.state === 'active';
+  const qrReady = active && currentIssuedTicket.qrReady === true;
+  document.getElementById('btnCopyTicket').disabled = !active;
+  document.getElementById('btnDownloadIndividualQr').disabled = !qrReady;
+  document.getElementById('btnPrintIndividualQr').disabled = !qrReady;
+}
+
+function setIssuedTicketState(state){
+  const normalizedState = Object.prototype.hasOwnProperty.call(
+    TICKET_STATE_LABELS,
+    state
+  )
+    ? state
+    : 'unknown';
+  if (currentIssuedTicket) currentIssuedTicket.state = normalizedState;
+  const stateElement = document.getElementById('issuedTicketState');
+  stateElement.dataset.state = normalizedState;
+  stateElement.textContent = TICKET_STATE_LABELS[normalizedState];
+  updateTicketActionAvailability();
+}
+
+function updateIssuedTicketCountdown(){
+  const countdown = document.getElementById('issuedTicketCountdown');
+  if (!currentIssuedTicket) {
+    countdown.textContent = '--:--';
+    return;
+  }
+
+  if (currentIssuedTicket.state !== 'active') {
+    countdown.textContent = 'Encerrado';
+    return;
+  }
+
+  const remainingMilliseconds =
+    currentIssuedTicket.expiresAt.getTime() - Date.now();
+  if (!Number.isFinite(remainingMilliseconds) || remainingMilliseconds <= 0) {
+    countdown.textContent = '00:00';
+    setIssuedTicketState('expired');
+    return;
+  }
+
+  const remainingSeconds = Math.ceil(remainingMilliseconds / 1000);
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+  countdown.textContent =
+    `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 function clearIssuedTicket(){
   const result = document.getElementById('issuedTicketResult');
+  currentIssuedTicket = null;
   document.getElementById('issuedAccessCode').textContent = '';
   document.getElementById('issuedTicketPurpose').textContent = 'Código emitido';
   document.getElementById('issuedTicketExpiry').textContent = '';
   document.getElementById('issuedTicketExpiry').removeAttribute('datetime');
+  document.getElementById('issuedTicketCountdown').textContent = '--:--';
   document.getElementById('issuedTicketWarning').textContent = '';
+  document.getElementById('individualQrCanvas').setAttribute(
+    'aria-label',
+    'QR Code individual ainda não emitido'
+  );
+  clearQrCanvas(document.getElementById('individualQrCanvas'));
+  setIssuedTicketState('unknown');
   result.hidden = true;
+  document.getElementById('individualQrEmpty').hidden = false;
 }
 
 function hideIssuedTicket(){
@@ -2509,27 +3257,97 @@ function showIssuedTicket(data, purposeLabel){
   }
 
   const expiry = new Date(String(data.expires_at || ''));
-  const expiryText = Number.isNaN(expiry.getTime())
-    ? 'horário informado pelo servidor'
-    : expiry.toLocaleString('pt-BR', {
-        dateStyle:'short',
-        timeStyle:'short'
-      });
+  if (Number.isNaN(expiry.getTime())) {
+    throw new AdminRequestError('O servidor retornou uma validade inválida.');
+  }
 
+  const accessUrl = getIndividualAccessUrl(accessCode);
+  let qrReady = false;
+  try {
+    renderQrToCanvas(
+      document.getElementById('individualQrCanvas'),
+      accessUrl,
+      `QR Code individual válido até ${expiry.toLocaleString('pt-BR')}`
+    );
+    qrReady = true;
+  } catch (error) {
+    clearQrCanvas(document.getElementById('individualQrCanvas'));
+  }
+
+  currentIssuedTicket = {
+    code:accessCode,
+    accessUrl,
+    expiresAt:expiry,
+    state:'active',
+    qrReady
+  };
+
+  abrirAba('qrcode', false);
+  const expiryText = expiry.toLocaleString('pt-BR', {
+    dateStyle:'short',
+    timeStyle:'short'
+  });
   const result = document.getElementById('issuedTicketResult');
   document.getElementById('issuedTicketPurpose').textContent = purposeLabel;
   document.getElementById('issuedAccessCode').textContent = accessCode;
   const expiryElement = document.getElementById('issuedTicketExpiry');
   expiryElement.textContent = expiryText;
-  if (!Number.isNaN(expiry.getTime())) {
-    expiryElement.dateTime = expiry.toISOString();
-  }
-  document.getElementById('issuedTicketWarning').textContent =
-    typeof data.aviso === 'string'
-      ? data.aviso
-      : 'Exiba e entregue este código apenas uma vez.';
+  expiryElement.dateTime = expiry.toISOString();
+  document.getElementById('issuedTicketWarning').textContent = qrReady
+    ? (typeof data.aviso === 'string'
+        ? data.aviso
+        : 'Exiba e entregue este código apenas uma vez.')
+    : 'O código foi emitido, mas o QR não pôde ser renderizado. Entregue o código digitável.';
+  document.getElementById('individualQrEmpty').hidden = true;
+  setIssuedTicketState('active');
+  updateIssuedTicketCountdown();
   result.hidden = false;
   result.focus();
+}
+
+async function refreshIndividualTicketStatus(){
+  if (
+    !currentIssuedTicket
+    || ticketStatusChecking
+    || !['active', 'unknown'].includes(currentIssuedTicket.state)
+  ) {
+    return;
+  }
+
+  ticketStatusChecking = true;
+  const codeBeingChecked = currentIssuedTicket.code;
+  try {
+    const data = await fetchJsonAdmin('admin.php', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'X-CSRF-Token':CSRF_TOKEN
+      },
+      body:JSON.stringify({
+        acao:'ticket_status',
+        access_code:codeBeingChecked,
+        _csrf:CSRF_TOKEN
+      })
+    });
+    if (!currentIssuedTicket || currentIssuedTicket.code !== codeBeingChecked) {
+      return;
+    }
+    setIssuedTicketState(
+      typeof data.ticket_state === 'string'
+        ? data.ticket_state
+        : 'unknown'
+    );
+  } catch (error) {
+    if (
+      currentIssuedTicket
+      && currentIssuedTicket.code === codeBeingChecked
+      && !(error instanceof AdminAuthenticationRequiredError)
+    ) {
+      setIssuedTicketState('unknown');
+    }
+  } finally {
+    ticketStatusChecking = false;
+  }
 }
 
 async function issueIndividualTicket({
@@ -2609,26 +3427,52 @@ async function issueRecoveryTicket(button, id){
 
 async function copyIssuedTicket(){
   const code = document.getElementById('issuedAccessCode').textContent.trim();
-  if (!code) {
-    showToast('Nenhum código disponível para copiar.', false);
+  if (
+    !code
+    || !currentIssuedTicket
+    || currentIssuedTicket.state !== 'active'
+  ) {
+    showToast('Nenhum código ativo disponível para copiar.', false);
     return;
   }
 
-  try {
-    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
-      throw new Error('clipboard_unavailable');
-    }
-    await navigator.clipboard.writeText(code);
-    showToast('Código copiado. Compartilhe-o somente com o destinatário.');
-  } catch (error) {
-    const output = document.getElementById('issuedAccessCode');
-    const selection = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(output);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    showToast('Cópia automática indisponível. O código foi selecionado para cópia manual.', false, 4200);
+  await copyTextValue(
+    code,
+    document.getElementById('issuedAccessCode'),
+    'Código copiado. Compartilhe-o somente com o destinatário.'
+  );
+}
+
+function downloadIndividualQr(){
+  if (
+    !currentIssuedTicket
+    || currentIssuedTicket.state !== 'active'
+    || !currentIssuedTicket.qrReady
+  ) {
+    showToast('Nenhum QR individual ativo disponível.', false);
+    return;
   }
+  downloadQrCanvas(
+    document.getElementById('individualQrCanvas'),
+    'davez-acesso-individual.png'
+  );
+}
+
+function printIndividualQr(){
+  if (
+    !currentIssuedTicket
+    || currentIssuedTicket.state !== 'active'
+    || !currentIssuedTicket.qrReady
+  ) {
+    showToast('Nenhum QR individual ativo disponível.', false);
+    return;
+  }
+  printQrCanvas(
+    document.getElementById('individualQrCanvas'),
+    'Acesso individual DaVez',
+    currentIssuedTicket.code,
+    `Uso único. Válido até ${currentIssuedTicket.expiresAt.toLocaleString('pt-BR')}.`
+  );
 }
 
 async function toggleClose(button, id){
@@ -3321,7 +4165,12 @@ document.querySelector('.tabs').addEventListener('keydown', event=>{
 document.getElementById('btnToggle').addEventListener('click', toggleChamada);
 document.getElementById('btnIssueCheckinTicket').addEventListener('click', issueCheckinTicket);
 document.getElementById('btnCopyTicket').addEventListener('click', copyIssuedTicket);
+document.getElementById('btnDownloadIndividualQr').addEventListener('click', downloadIndividualQr);
+document.getElementById('btnPrintIndividualQr').addEventListener('click', printIndividualQr);
 document.getElementById('btnHideTicket').addEventListener('click', hideIssuedTicket);
+document.getElementById('btnDownloadPermanentQr').addEventListener('click', downloadPermanentQr);
+document.getElementById('btnPrintPermanentQr').addEventListener('click', printPermanentQr);
+document.getElementById('btnCopyPublicUrl').addEventListener('click', copyPublicQrUrl);
 document.getElementById('btnShowManual').addEventListener('click', toggleManualBox);
 document.getElementById('btnClear').addEventListener('click', limpar);
 document.getElementById('btnRefreshDavez').addEventListener('click', ()=>carregarDaVez(true));
@@ -3378,8 +4227,13 @@ document.getElementById('adminDialogLayer').addEventListener('click', event=>{
   }
 });
 document.addEventListener('keydown', handleDialogKeydown);
+window.addEventListener('afterprint', clearQrPrintSheet);
 
 setInterval(carregar, 12000);
+setInterval(updateIssuedTicketCountdown, 1000);
+setInterval(refreshIndividualTicketStatus, 5000);
+initializePermanentQr();
+clearIssuedTicket();
 initMainSortable();
 carregar();
 carregarRelatorios();

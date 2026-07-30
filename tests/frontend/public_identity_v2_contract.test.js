@@ -36,6 +36,19 @@ assert.match(script, /form\.append\("access_code", accessCode\)/);
 assert.match(html, /id="btnPublicLogout"/);
 assert.match(script, /fetchPublicJson\(PUBLIC_LOGOUT_URL/);
 assert.match(script, /async function recoverAccess\(\)/);
+assert.match(script, /function applyAccessCodeFromFragment\(\)/);
+assert.match(
+  script,
+  /new URLSearchParams\(fragment\)[\s\S]*?fragmentParams\.get\("access_code"\)/
+);
+assert.match(script, /window\.history\.replaceState\(null, document\.title/);
+assert.match(script, /accessCodeField\.value = accessCode/);
+assert.match(script, /applyAccessCodeFromFragment\(\)/);
+assert.doesNotMatch(
+  script,
+  /new URLSearchParams\(window\.location\.search\)[\s\S]*?access_code/,
+  "O código individual do QR não pode trafegar na query string."
+);
 
 assert.match(script, /credentials:\s*"same-origin"/);
 assert.match(script, /cache:\s*"no-store"/);
@@ -81,7 +94,7 @@ assert.doesNotMatch(
   "localStorage só pode persistir a preferência visual, nunca a identidade pública"
 );
 
-assert.match(serviceWorker, /const CACHE_NAME = "motoboys-static-v6";/);
+assert.match(serviceWorker, /const CACHE_NAME = "motoboys-static-v7";/);
 assert.match(
   serviceWorker,
   /if \(!request \|\| request\.method !== "GET"\) \{\s*return REQUEST_STRATEGY\.NETWORK_ONLY;/

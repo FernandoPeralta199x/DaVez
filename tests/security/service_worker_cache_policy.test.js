@@ -17,7 +17,7 @@ function request(path, options = {}) {
   };
 }
 
-assert.equal(CACHE_NAME, "motoboys-static-v6");
+assert.equal(CACHE_NAME, "motoboys-static-v7");
 
 for (const assetPath of STATIC_ASSET_PATHS) {
   assert.equal(
@@ -121,7 +121,7 @@ async function testFetchEventBoundary() {
       "motoboys-static-v3",
       "motoboys-static-v4",
       "motoboys-static-v5",
-      "motoboys-static-v6",
+      "motoboys-static-v7",
       "cache-de-outra-aplicacao",
     ],
     delete: async cacheName => {

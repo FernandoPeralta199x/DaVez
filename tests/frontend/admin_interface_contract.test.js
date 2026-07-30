@@ -47,6 +47,7 @@ for (const action of [
   "apagar_relatorio",
   "issue_checkin_ticket",
   "issue_recovery_ticket",
+  "ticket_status",
 ]) {
   assert.ok(interfaceSource.includes(action), `Ação preservada: ${action}`);
 }
@@ -54,11 +55,39 @@ for (const action of [
 assert.match(interfaceSource, /role="tablist"/);
 assert.equal(
   (interfaceSource.match(/<button\b[^>]*role="tab"/g) || []).length,
-  4
+  6
 );
 assert.equal(
   (interfaceSource.match(/<section\b[^>]*role="tabpanel"/g) || []).length,
-  4
+  6
+);
+assert.match(
+  interfaceSource,
+  /id="tab-qrcode" role="tab"[\s\S]*?aria-controls="qrcode"[\s\S]*?data-tab="qrcode"/
+);
+assert.match(
+  interfaceSource,
+  /id="qrcode" class="section" role="tabpanel"[\s\S]*?aria-labelledby="tab-qrcode"[\s\S]*?hidden/
+);
+assert.match(
+  interfaceSource,
+  /id="tab-suporte" role="tab"[\s\S]*?aria-controls="suporte"[\s\S]*?data-tab="suporte"/
+);
+assert.match(
+  interfaceSource,
+  /id="suporte" class="section" role="tabpanel"[\s\S]*?aria-labelledby="tab-suporte"[\s\S]*?hidden/
+);
+assert.match(
+  interfaceSource,
+  /href="mailto:fernando\.augusto\.peralta@gmail\.com"/
+);
+assert.match(
+  interfaceSource,
+  /href="https:\/\/wa\.me\/5548992163264\?text=Ol%C3%A1%2C%20Fernando\.%20Preciso%20de%20suporte%20no%20DaVez\."/
+);
+assert.match(
+  interfaceSource,
+  /target="_blank" rel="noopener noreferrer"/
 );
 assert.match(inlineScript, /ArrowLeft/);
 assert.match(inlineScript, /ArrowRight/);
@@ -115,21 +144,44 @@ assert.match(interfaceSource, /data-state="loading"/);
 assert.match(interfaceSource, /data-state="empty"/);
 assert.match(inlineScript, /data-state="\$\{tone\}"/);
 
-assert.match(interfaceSource, /id="individual-codes-title">Códigos individuais<\/h2>/);
+assert.match(interfaceSource, /id="permanent-qr-title">QR permanente de acesso<\/h2>/);
+assert.match(interfaceSource, /id="permanentQrCanvas"/);
+assert.match(interfaceSource, /id="btnDownloadPermanentQr"/);
+assert.match(interfaceSource, /id="btnPrintPermanentQr"/);
+assert.match(interfaceSource, /id="btnCopyPublicUrl"/);
+assert.match(
+  interfaceSource,
+  /<script src="js\/qrcode-generator-1\.4\.4\.min\.js"><\/script>/
+);
+assert.match(interfaceSource, /id="individual-codes-title">Código e QR individual<\/h2>/);
 assert.match(interfaceSource, /id="btnIssueCheckinTicket"/);
 assert.match(
   interfaceSource,
-  /id="issuedTicketResult" role="status"[\s\S]*?aria-live="polite"[\s\S]*?hidden/
+  /id="issuedTicketResult"[\s\S]*?role="status"[\s\S]*?aria-live="polite"[\s\S]*?hidden/
 );
 assert.match(interfaceSource, /id="issuedAccessCode"/);
 assert.match(interfaceSource, /id="issuedTicketExpiry"/);
+assert.match(interfaceSource, /id="issuedTicketCountdown"/);
+assert.match(interfaceSource, /id="issuedTicketState" data-state="active">Ativo/);
+assert.match(interfaceSource, /id="individualQrCanvas"/);
 assert.match(interfaceSource, /id="btnCopyTicket"/);
+assert.match(interfaceSource, /id="btnDownloadIndividualQr"/);
+assert.match(interfaceSource, /id="btnPrintIndividualQr"/);
 assert.match(interfaceSource, /id="btnHideTicket"/);
-assert.match(interfaceSource, /QR externo não faz parte deste lote/);
+assert.doesNotMatch(interfaceSource, /QR externo não faz parte deste lote/);
+assert.match(inlineScript, /function getPublicAppUrl\(\)/);
+assert.match(inlineScript, /function getIndividualAccessUrl\(accessCode\)/);
+assert.match(inlineScript, /publicUrl\.hash = new URLSearchParams/);
+assert.match(inlineScript, /function renderQrToCanvas\(canvas, value, accessibleLabel\)/);
+assert.match(inlineScript, /window\.qrcode\(0, 'M'\)/);
+assert.match(inlineScript, /function downloadQrCanvas\(canvas, filename\)/);
+assert.match(inlineScript, /function printQrCanvas\(canvas, title, value, instruction\)/);
+assert.match(inlineScript, /async function refreshIndividualTicketStatus\(\)/);
+assert.match(inlineScript, /acao:'ticket_status'/);
 assert.match(inlineScript, /action:'issue_checkin_ticket'/);
 assert.match(inlineScript, /action:'issue_recovery_ticket'/);
 assert.match(inlineScript, /_csrf:CSRF_TOKEN/);
-assert.match(inlineScript, /navigator\.clipboard\.writeText\(code\)/);
+assert.match(inlineScript, /navigator\.clipboard\.writeText\(value\)/);
 assert.match(inlineScript, /openAdminDialog\(\{[\s\S]*?Emitir código de recovery\?/);
 
 process.stdout.write("admin_interface_contract: OK\n");

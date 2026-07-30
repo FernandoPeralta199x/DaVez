@@ -173,6 +173,89 @@ final class PublicIdentityStore
     }
 
     /**
+     * Consulta o estado operacional sem retornar o hash ou IDs internos.
+     *
+     * @return array{
+     *   purpose: 'checkin'|'recovery',
+     *   state: 'active'|'consumed'|'expired'|'revoked',
+     *   expires_at: DateTimeImmutable
+     * }|null
+     */
+    public function findTicketStatus(
+        string $ticketHash,
+        string $operationalDate,
+        DateTimeInterface $now
+    ): ?array {
+        self::assertBinaryHash($ticketHash, 'ticket');
+        self::assertOperationalDate($operationalDate);
+        $statement = $this->prepare(
+            'SELECT purpose, expires_at, consumed_at, revoked_at
+             FROM admission_tickets
+             WHERE ticket_hash = ?
+               AND operational_date = ?
+             LIMIT 1',
+            'Não foi possível consultar o estado do ticket público.'
+        );
+
+        try {
+            $statement->bind_param(
+                'ss',
+                $ticketHash,
+                $operationalDate
+            );
+            $this->execute(
+                $statement,
+                'Não foi possível consultar o estado do ticket público.'
+            );
+
+            $purpose = null;
+            $expiresAt = null;
+            $consumedAt = null;
+            $revokedAt = null;
+            $statement->bind_result(
+                $purpose,
+                $expiresAt,
+                $consumedAt,
+                $revokedAt
+            );
+
+            if (!$statement->fetch()) {
+                return null;
+            }
+
+            self::assertPurpose((string) $purpose);
+            $parsedExpiry = DateTimeImmutable::createFromFormat(
+                '!Y-m-d H:i:s',
+                (string) $expiresAt,
+                $now->getTimezone()
+            );
+
+            if ($parsedExpiry === false) {
+                throw new RuntimeException(
+                    'Não foi possível consultar o estado do ticket público.'
+                );
+            }
+
+            $state = 'active';
+            if ($revokedAt !== null) {
+                $state = 'revoked';
+            } elseif ($consumedAt !== null) {
+                $state = 'consumed';
+            } elseif ($parsedExpiry <= $now) {
+                $state = 'expired';
+            }
+
+            return [
+                'purpose' => (string) $purpose,
+                'state' => $state,
+                'expires_at' => $parsedExpiry,
+            ];
+        } finally {
+            $statement->close();
+        }
+    }
+
+    /**
      * Marca o ticket como consumido uma única vez.
      */
     public function consumeTicket(

@@ -36,6 +36,12 @@ assert.match(identity, /A identidade pública exige HTTPS/);
 assert.match(store, /INSERT INTO admission_tickets/);
 assert.match(store, /FROM admission_tickets/);
 assert.match(store, /FOR UPDATE/);
+assert.match(store, /public function findTicketStatus\(/);
+assert.match(
+  store,
+  /SELECT purpose, expires_at, consumed_at, revoked_at[\s\S]*?WHERE ticket_hash = \?/
+);
+assert.match(store, /'active'\|'consumed'\|'expired'\|'revoked'/);
 assert.match(
   store,
   /SET consumed_at = \?, checkin_id = \?/
