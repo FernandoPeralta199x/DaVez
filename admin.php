@@ -2644,7 +2644,7 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+<script src="js/sortable-1.15.0.min.js"></script>
 <script src="js/qrcode-generator-1.4.4.min.js"></script>
 <script>
 let carregando = false;

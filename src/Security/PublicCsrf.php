@@ -18,6 +18,13 @@ function davez_bootstrap_public_request_context(): void
 {
     davez_start_secure_session(['same_site' => 'Strict']);
 
+    // A página pública consulta session_info a cada ciclo de polling. Emitir um
+    // token novo a cada leitura faria abas concorrentes invalidarem o cookie
+    // umas das outras, produzindo 403 esporádico nas mutações seguintes.
+    if (davez_public_request_context_matches_cookie()) {
+        return;
+    }
+
     $token = rtrim(
         strtr(base64_encode(random_bytes(32)), '+/', '-_'),
         '='
@@ -36,6 +43,41 @@ function davez_bootstrap_public_request_context(): void
         'httponly' => true,
         'samesite' => 'Strict',
     ]);
+}
+
+function davez_public_request_context_max_age(): int
+{
+    return davez_positive_environment_integer(
+        'PUBLIC_REQUEST_CONTEXT_SECONDS',
+        43200,
+        300,
+        86400
+    );
+}
+
+/**
+ * Confirma que sessão e cookie ainda descrevem o mesmo contexto vigente.
+ *
+ * Não avalia sinais cross-site: essa decisão pertence à validação das
+ * mutações, não à emissão do contexto.
+ */
+function davez_public_request_context_matches_cookie(): bool
+{
+    $context = $_SESSION['davez_public_request_context'] ?? null;
+    $cookieToken = $_COOKIE[DAVEZ_PUBLIC_CONTEXT_COOKIE] ?? null;
+
+    if (
+        !is_array($context)
+        || !is_string($context['token'] ?? null)
+        || !is_int($context['issued_at'] ?? null)
+        || !is_string($cookieToken)
+        || strlen($cookieToken) > 128
+    ) {
+        return false;
+    }
+
+    return time() - $context['issued_at'] <= davez_public_request_context_max_age()
+        && hash_equals($context['token'], $cookieToken);
 }
 
 function davez_request_has_cross_site_signal(): bool
@@ -85,28 +127,7 @@ function davez_public_request_context_valid(): bool
         return false;
     }
 
-    $context = $_SESSION['davez_public_request_context'] ?? null;
-    $cookieToken = $_COOKIE[DAVEZ_PUBLIC_CONTEXT_COOKIE] ?? null;
-
-    if (
-        !is_array($context)
-        || !is_string($context['token'] ?? null)
-        || !is_int($context['issued_at'] ?? null)
-        || !is_string($cookieToken)
-        || strlen($cookieToken) > 128
-    ) {
-        return false;
-    }
-
-    $maximumAge = davez_positive_environment_integer(
-        'PUBLIC_REQUEST_CONTEXT_SECONDS',
-        43200,
-        300,
-        86400
-    );
-
-    return time() - $context['issued_at'] <= $maximumAge
-        && hash_equals($context['token'], $cookieToken);
+    return davez_public_request_context_matches_cookie();
 }
 
 function davez_require_public_request_context(): void

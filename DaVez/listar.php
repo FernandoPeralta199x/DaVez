@@ -11,6 +11,33 @@ require_once __DIR__ . '/../src/Http/PublicIdentityView.php';
 davez_install_safe_exception_handler();
 davez_require_http_method('GET');
 
+// A página pública consulta esta rota a cada cinco segundos e os dispositivos
+// costumam compartilhar o IP da loja. O teto é alto o bastante para dezenas de
+// aparelhos simultâneos e ainda assim corta coleta automatizada agressiva.
+try {
+    $listRate = davez_rate_limit_consume(
+        'public-queue-list-v2',
+        davez_rate_limit_request_subject(),
+        600,
+        60
+    );
+} catch (RuntimeException $exception) {
+    davez_send_error(
+        'security_control_unavailable',
+        'Serviço temporariamente indisponível.',
+        503
+    );
+}
+
+if (!$listRate['allowed']) {
+    header('Retry-After: ' . $listRate['retry_after']);
+    davez_send_error(
+        'rate_limit_exceeded',
+        'Muitas consultas. Aguarde e tente novamente.',
+        429
+    );
+}
+
 include __DIR__ . '/../config.php';
 
 date_default_timezone_set('America/Sao_Paulo');

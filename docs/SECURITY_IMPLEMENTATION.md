@@ -72,6 +72,25 @@ Em HTTPS, o cookie é `Secure`, `HttpOnly` e `SameSite=Strict`. Em HTTP local,
 `Secure` acompanha o transporte para manter o ambiente testável; staging e
 produção devem ser HTTPS.
 
+### Transporte atrás de proxy reverso
+
+```env
+APP_TRUSTED_PROXIES=10.0.0.8,10.0.1.0/24
+```
+
+Quando o TLS termina em um balanceador, `$_SERVER['HTTPS']` e `SERVER_PORT`
+descrevem o salto interno em texto claro. Sem configuração o aplicativo
+concluiria HTTP e a identidade pública responderia 426 a todos os
+dispositivos.
+
+- `APP_TRUSTED_PROXIES` aceita IPs e faixas CIDR, IPv4 ou IPv6;
+- `X-Forwarded-Proto` só é lido quando `REMOTE_ADDR` pertence à lista;
+- sem a variável nenhum cabeçalho encaminhado é considerado;
+- um valor malformado interrompe a requisição em vez de assumir HTTP.
+
+Nunca inclua faixas amplas: qualquer cliente dentro delas pode declarar HTTPS
+e obter cookies `Secure` em transporte inseguro.
+
 O painel não usa mais HTTP Basic nem compara senha em texto puro. `admin.php`
 exibe formulário de login, limita tentativas, rotaciona a sessão e oferece
 logout por POST com CSRF.

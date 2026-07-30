@@ -100,6 +100,23 @@ security_foundation_assert(
     'O contexto público same-origin foi rejeitado.'
 );
 
+davez_bootstrap_public_request_context();
+security_foundation_assert(
+    ($_SESSION['davez_public_request_context']['token'] ?? null)
+        === $publicContext['token'],
+    'O contexto público válido foi rotacionado durante o polling.'
+);
+
+$_COOKIE[DAVEZ_PUBLIC_CONTEXT_COOKIE] = 'token-de-outro-dispositivo';
+davez_bootstrap_public_request_context();
+security_foundation_assert(
+    ($_SESSION['davez_public_request_context']['token'] ?? null)
+        !== $publicContext['token'],
+    'Um contexto público divergente não foi renegociado.'
+);
+$_COOKIE[DAVEZ_PUBLIC_CONTEXT_COOKIE]
+    = $_SESSION['davez_public_request_context']['token'];
+
 $_SERVER['HTTP_ORIGIN'] = 'https://attacker.test';
 $_SERVER['HTTP_SEC_FETCH_SITE'] = 'cross-site';
 security_foundation_assert(
@@ -112,6 +129,57 @@ unset(
     $_SERVER['HTTP_HOST'],
     $_COOKIE[DAVEZ_PUBLIC_CONTEXT_COOKIE]
 );
+
+$originalHttps = $_SERVER['HTTPS'] ?? null;
+$originalPort = $_SERVER['SERVER_PORT'] ?? null;
+unset($_SERVER['HTTPS'], $_SERVER['SERVER_PORT']);
+$_SERVER['REMOTE_ADDR'] = '10.0.1.9';
+$_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+
+security_foundation_assert(
+    !davez_is_https_request(),
+    'X-Forwarded-Proto foi aceito sem proxy declarado.'
+);
+
+putenv('APP_TRUSTED_PROXIES=10.0.1.0/24');
+security_foundation_assert(
+    davez_is_https_request(),
+    'X-Forwarded-Proto de um proxy confiável foi ignorado.'
+);
+
+$_SERVER['REMOTE_ADDR'] = '10.0.2.9';
+security_foundation_assert(
+    !davez_is_https_request(),
+    'Um endereço fora da faixa confiável declarou HTTPS.'
+);
+
+$_SERVER['REMOTE_ADDR'] = '10.0.1.9';
+$_SERVER['HTTP_X_FORWARDED_PROTO'] = 'http, https';
+security_foundation_assert(
+    !davez_is_https_request(),
+    'O protocolo original em texto claro foi sobreposto pela cadeia de proxies.'
+);
+
+putenv('APP_TRUSTED_PROXIES=nao-e-um-endereco');
+try {
+    davez_is_https_request();
+    security_foundation_fail(
+        'Uma lista de proxies malformada foi aceita silenciosamente.'
+    );
+} catch (RuntimeException $exception) {
+    // Comportamento esperado: falha explícita em vez de HTTP presumido.
+}
+
+putenv('APP_TRUSTED_PROXIES');
+unset($_SERVER['HTTP_X_FORWARDED_PROTO'], $_SERVER['REMOTE_ADDR']);
+
+if ($originalHttps !== null) {
+    $_SERVER['HTTPS'] = $originalHttps;
+}
+
+if ($originalPort !== null) {
+    $_SERVER['SERVER_PORT'] = $originalPort;
+}
 
 try {
     davez_assert_no_untrusted_identity([

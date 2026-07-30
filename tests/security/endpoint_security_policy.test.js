@@ -21,6 +21,7 @@ function forbidPattern(source, pattern, message) {
 }
 
 const admin = read("admin.php");
+const publicPage = read("index.html");
 const configExample = read("config.example.php");
 const checkin = read("checkin.php");
 const relogin = read("relogin.php");
@@ -172,10 +173,34 @@ requirePattern(
   /davez_require_http_method\('GET'\)/,
   "DaVez/listar.php não restringe leitura a GET."
 );
+requirePattern(
+  listQueue,
+  /davez_rate_limit_consume\(/,
+  "DaVez/listar.php não aplica rate limiting no polling público."
+);
 forbidPattern(
   listQueue,
   /["']fila["']\s*=>|client_id/,
   "DaVez/listar.php ainda expõe a fila administrativa."
+);
+
+// Script de terceiro servido por CDN executaria código arbitrário na sessão
+// autenticada se a origem externa fosse comprometida.
+for (const [file, source] of [
+  ["admin.php", admin],
+  ["index.html", publicPage],
+]) {
+  forbidPattern(
+    source,
+    /<(?:script|link)[^>]*(?:src|href)=["']https?:\/\//i,
+    `${file} carrega recurso de origem externa; hospede o arquivo em js/.`
+  );
+}
+
+requirePattern(
+  admin,
+  /<script src="js\/sortable-1\.15\.0\.min\.js"><\/script>/,
+  "admin.php não carrega o Sortable hospedado localmente."
 );
 
 process.stdout.write("endpoint_security_policy: OK\n");
