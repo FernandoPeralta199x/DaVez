@@ -3,19 +3,52 @@
 <head>
 <meta charset="UTF-8" />
 <title>DaVez — Check-in de motoboys</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="description" content="Faça seu check-in e acompanhe sua posição nas filas de motoboys da DaVez." />
 <meta name="color-scheme" content="light dark" />
 
 <!-- ===== PWA ===== -->
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#f4f6fa" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#07101f" media="(prefers-color-scheme: dark)">
+<meta id="appThemeColor" name="theme-color" content="#f4f6fa">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Motoboys">
-<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<meta name="apple-mobile-web-app-title" content="DaVez">
+<link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png">
+
+<script>
+(() => {
+  const systemTheme = (
+    typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-color-scheme: dark)").matches
+  ) ? "dark" : "light";
+  let initialTheme = systemTheme;
+
+  if (typeof window !== "undefined") {
+    try {
+      const savedTheme = window.localStorage.getItem("davez_theme");
+      if (savedTheme === "light" || savedTheme === "dark") {
+        initialTheme = savedTheme;
+      }
+    } catch (error) {
+      // O tema do sistema permanece como fallback quando o storage não está disponível.
+    }
+  }
+
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.theme = initialTheme;
+    document.documentElement.style.colorScheme = initialTheme;
+    const themeColor = document.getElementById("appThemeColor");
+    if (themeColor) {
+      themeColor.setAttribute(
+        "content",
+        initialTheme === "dark" ? "#07101f" : "#f4f6fa"
+      );
+    }
+  }
+})();
+</script>
 
 <style>
 :root {
@@ -54,6 +87,8 @@ html {
   min-width: 20rem;
   color-scheme: light dark;
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 html,
@@ -93,6 +128,12 @@ body.modal-open {
   overflow: hidden;
 }
 
+button,
+input,
+a {
+  touch-action: manipulation;
+}
+
 .skip-link {
   position: fixed;
   top: 0.75rem;
@@ -113,9 +154,12 @@ body.modal-open {
 .container {
   position: relative;
   z-index: var(--z-content);
+  min-height: 100vh;
+  min-height: 100svh;
   min-height: 100dvh;
   display: grid;
   place-items: center;
+  padding: 1.25rem 1rem 5.5rem;
   padding:
     max(1.25rem, env(safe-area-inset-top))
     max(1rem, env(safe-area-inset-right))
@@ -124,7 +168,8 @@ body.modal-open {
 }
 
 .card-shell {
-  width: min(100%, 32.8rem);
+  width: 100%;
+  max-width: 32.8rem;
   padding: 0.4rem;
   border: 1px solid rgba(22, 79, 201, 0.09);
   border-radius: 2.15rem;
@@ -156,16 +201,148 @@ body.modal-open {
   background: linear-gradient(90deg, var(--route), #3d78e8 68%, #e66b00);
 }
 
-.logo-top {
+.access-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
   margin-bottom: 1.25rem;
+}
+
+.header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.55rem;
+}
+
+.theme-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.22rem;
+  border: 1px solid rgba(22, 79, 201, 0.14);
+  border-radius: 999px;
+  background: rgba(231, 238, 252, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.theme-control .theme-option {
+  width: auto;
+  min-height: 2rem;
+  margin: 0;
+  padding: 0.42rem 0.68rem;
+  border: 0;
+  border-radius: 999px;
+  color: var(--muted);
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  transform: translateY(0);
+  transition:
+    color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    background 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.theme-control .theme-option:hover:not(:disabled) {
+  color: var(--route-strong);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: none;
+}
+
+.theme-control .theme-option[aria-pressed="true"] {
+  color: var(--route-strong);
+  background: var(--surface);
+  box-shadow: 0 0.24rem 0.7rem rgba(25, 48, 94, 0.12);
+}
+
+.theme-control .theme-option:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+.theme-control .theme-option:focus-visible {
+  outline: 0.18rem solid rgba(22, 79, 201, 0.32);
+  outline-offset: 0.12rem;
+}
+
+.logo-top {
   text-align: left;
 }
 
 .logo-top img {
   display: block;
-  width: auto;
-  max-width: min(10.25rem, 56vw);
+  width: 10.25rem;
+  max-width: 56vw;
   height: auto;
+}
+
+.admin-access {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.38rem 0.35rem 0.9rem;
+  border: 1px solid rgba(22, 79, 201, 0.18);
+  border-radius: 999px;
+  color: var(--route-strong);
+  background: rgba(231, 238, 252, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 0.4rem 1.2rem rgba(22, 79, 201, 0.08);
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  text-decoration: none;
+  transform: translateY(0);
+  transition:
+    color 260ms cubic-bezier(0.32, 0.72, 0, 1),
+    background 260ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 260ms cubic-bezier(0.32, 0.72, 0, 1),
+    transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.admin-access:hover {
+  color: #fff;
+  background: var(--route-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 0.65rem 1.4rem rgba(15, 61, 159, 0.18);
+  transform: translateY(-0.12rem);
+}
+
+.admin-access:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.admin-access:focus-visible {
+  outline: 0.2rem solid rgba(22, 79, 201, 0.3);
+  outline-offset: 0.18rem;
+}
+
+.admin-access-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--route);
+  font-size: 0.9rem;
+  font-weight: 800;
+  transform: translate(0, 0) scale(1);
+  transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.admin-access:hover .admin-access-icon {
+  transform: translate(0.12rem, -0.08rem) scale(1.04);
 }
 
 .eyebrow {
@@ -298,6 +475,21 @@ button:disabled {
   margin-top: 1.25rem;
 }
 
+.btn-recover {
+  margin-top: 0.65rem;
+  border: 1px solid #aebddd;
+  color: var(--route);
+  background: transparent;
+  box-shadow: none;
+}
+
+.btn-recover:hover:not(:disabled) {
+  border-color: var(--route);
+  color: var(--route-strong);
+  background: var(--route-soft);
+  box-shadow: none;
+}
+
 .status {
   display: none;
   min-height: 0;
@@ -416,45 +608,142 @@ button:disabled {
 }
 
 .pwa-box {
-  display: none;
-  margin-top: 1rem;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.85rem 1rem;
+  margin-top: 1.5rem;
   padding: 1rem;
-  border: 1px solid #cfdaee;
+  overflow: hidden;
+  border: 1px solid rgba(22, 79, 201, 0.18);
   border-radius: var(--radius-panel);
-  background: var(--surface-soft);
-  box-shadow: inset 0 1px 0 #fff;
+  background:
+    radial-gradient(circle at 100% 0, rgba(22, 79, 201, 0.11), transparent 12rem),
+    var(--surface-soft);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0.65rem 1.8rem rgba(25, 48, 94, 0.07);
 }
 
 .pwa-box.show {
+  display: grid;
+}
+
+.pwa-box::before {
+  position: absolute;
+  top: 0;
+  right: 1rem;
+  width: 3.5rem;
+  height: 0.18rem;
+  border-radius: 0 0 999px 999px;
+  content: "";
+  background: linear-gradient(90deg, var(--route), var(--locator));
+}
+
+.pwa-visual {
+  display: grid;
+  place-items: center;
+  width: 2.8rem;
+  height: 2.8rem;
+  border-radius: 0.95rem;
+  color: var(--route);
+  background: var(--route-soft);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.pwa-visual svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  stroke: currentColor;
+}
+
+.pwa-copy {
+  min-width: 0;
+}
+
+.pwa-kicker {
   display: block;
+  margin-bottom: 0.16rem;
+  color: var(--route);
+  font-size: 0.65rem;
+  font-weight: 760;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .pwa-title {
-  margin-bottom: 0.35rem;
+  margin: 0;
   color: var(--ink);
-  font-size: 0.86rem;
-  font-weight: 730;
+  font-size: 1rem;
+  font-weight: 760;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  text-wrap: balance;
 }
 
 .pwa-text {
+  margin: 0.35rem 0 0;
   color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.5;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+.pwa-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.6rem;
 }
 
 .pwa-btn,
 .pwa-btn.ios {
-  margin-top: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 3rem;
+  margin-top: 0;
+  padding: 0.45rem 0.5rem 0.45rem 1rem;
   border-radius: 999px;
   color: var(--route);
   background: var(--route-soft);
-  box-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.pwa-btn-icon {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--route);
+  transform: translate(0, 0) scale(1);
+  transition: transform 240ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .pwa-btn:hover:not(:disabled),
 .pwa-btn.ios:hover:not(:disabled) {
   color: #fff;
   background: var(--route-strong);
+}
+
+.pwa-btn:hover:not(:disabled) .pwa-btn-icon,
+.pwa-btn.ios:hover:not(:disabled) .pwa-btn-icon {
+  transform: translate(0.1rem, -0.06rem) scale(1.04);
+}
+
+.pwa-box[data-install-state="installed"] {
+  border-color: color-mix(in srgb, var(--success) 34%, transparent);
+  background:
+    radial-gradient(circle at 100% 0, color-mix(in srgb, var(--success) 13%, transparent), transparent 12rem),
+    var(--surface-soft);
+}
+
+.pwa-box[data-install-state="installed"] .pwa-visual {
+  color: var(--success);
+  background: var(--success-soft);
 }
 
 .modal-overlay {
@@ -464,6 +753,7 @@ button:disabled {
   display: none;
   align-items: center;
   justify-content: center;
+  padding: 1rem;
   padding:
     max(1rem, env(safe-area-inset-top))
     max(1rem, env(safe-area-inset-right))
@@ -895,7 +1185,9 @@ button:disabled {
 
 .fab-refresh {
   position: fixed;
+  right: 1rem;
   right: max(1rem, env(safe-area-inset-right));
+  bottom: 1rem;
   bottom: max(1rem, env(safe-area-inset-bottom));
   z-index: var(--z-floating);
   display: inline-flex;
@@ -964,6 +1256,37 @@ button:disabled {
     border-radius: 1.65rem;
   }
 
+  .access-header {
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .header-actions {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .theme-control {
+    width: 100%;
+  }
+
+  .theme-control .theme-option {
+    flex: 1 1 50%;
+  }
+
+  .admin-access {
+    align-self: stretch;
+    justify-content: space-between;
+  }
+
+  .pwa-box {
+    grid-template-columns: 1fr;
+  }
+
+  .pwa-actions {
+    grid-column: 1;
+  }
+
   .davez-grid {
     grid-template-columns: 1fr;
   }
@@ -986,186 +1309,243 @@ button:disabled {
     padding: 2.25rem;
   }
 
-  .logo-top {
+  .access-header {
     margin-bottom: 1.5rem;
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --canvas: #07101f;
-    --canvas-deep: #0e192b;
-    --surface: #101a2b;
-    --surface-soft: #152137;
-    --ink: #f3f7ff;
-    --muted: #aab5c8;
-    --line: #33425a;
-    --route: #a9c2ff;
-    --route-strong: #d1ddff;
-    --route-soft: #172b52;
-    --locator: #ff9c42;
-    --success: #70d5aa;
-    --success-soft: #15372b;
-    --warning: #ffc36e;
-    --warning-soft: #3d2b13;
-    --danger: #ff919d;
-    --danger-soft: #461c25;
-    --shadow: 0 20px 58px rgba(0, 0, 0, 0.28);
-    --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.2);
-  }
+:root[data-theme="light"] {
+  color-scheme: light;
+}
 
-  body {
-    background:
-      radial-gradient(circle at 12% 8%, rgba(64, 105, 203, 0.2), transparent 31rem),
-      radial-gradient(circle at 92% 88%, rgba(230, 107, 0, 0.1), transparent 26rem),
-      var(--canvas);
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #07101f;
+  --canvas-deep: #0e192b;
+  --surface: #101a2b;
+  --surface-soft: #152137;
+  --ink: #f3f7ff;
+  --muted: #aab5c8;
+  --line: #33425a;
+  --route: #a9c2ff;
+  --route-strong: #d1ddff;
+  --route-soft: #172b52;
+  --locator: #ff9c42;
+  --success: #70d5aa;
+  --success-soft: #15372b;
+  --warning: #ffc36e;
+  --warning-soft: #3d2b13;
+  --danger: #ff919d;
+  --danger-soft: #461c25;
+  --shadow: 0 20px 58px rgba(0, 0, 0, 0.28);
+  --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
 
-  body::before {
-    background-image:
-      linear-gradient(rgba(214, 225, 245, 0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(214, 225, 245, 0.04) 1px, transparent 1px);
-  }
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(64, 105, 203, 0.2), transparent 31rem),
+    radial-gradient(circle at 92% 88%, rgba(230, 107, 0, 0.1), transparent 26rem),
+    var(--canvas);
+}
 
-  .card-shell {
-    border-color: rgba(214, 225, 245, 0.09);
-    background: rgba(255, 255, 255, 0.035);
-  }
+:root[data-theme="dark"] body::before {
+  background-image:
+    linear-gradient(rgba(214, 225, 245, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(214, 225, 245, 0.04) 1px, transparent 1px);
+}
 
-  .card {
-    border-color: rgba(214, 225, 245, 0.08);
-    background: rgba(16, 26, 43, 0.97);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), var(--shadow-soft);
-  }
+:root[data-theme="dark"] .card-shell {
+  border-color: rgba(214, 225, 245, 0.09);
+  background: rgba(255, 255, 255, 0.035);
+}
 
-  .logo-top {
-    display: inline-flex;
-    padding: 0.45rem 0.7rem;
-    border-radius: 0.8rem;
-    background: #f8faff;
-  }
+:root[data-theme="dark"] .card {
+  border-color: rgba(214, 225, 245, 0.08);
+  background: rgba(16, 26, 43, 0.97);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), var(--shadow-soft);
+}
 
-  input {
-    border-color: #46566f;
-    color: var(--ink);
-    background: #111d30;
-    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.24);
-  }
+:root[data-theme="dark"] .logo-top {
+  display: inline-flex;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.8rem;
+  background: #f8faff;
+}
 
-  input::placeholder {
-    color: #8f9caf;
-  }
+:root[data-theme="dark"] .theme-control {
+  border-color: rgba(169, 194, 255, 0.18);
+  background: rgba(23, 43, 82, 0.68);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
 
-  input:hover {
-    border-color: #6a7b95;
-  }
+:root[data-theme="dark"] .theme-control .theme-option {
+  color: #aab5c8;
+  background: transparent;
+  box-shadow: none;
+}
 
-  button,
-  .btn.primary,
-  #btn {
-    color: #fff;
-    background: #3262d4;
-  }
+:root[data-theme="dark"] .theme-control .theme-option:hover:not(:disabled) {
+  color: #f3f7ff;
+  background: rgba(169, 194, 255, 0.12);
+}
 
-  button:hover:not(:disabled),
-  .btn.primary:hover:not(:disabled),
-  #btn:hover:not(:disabled) {
-    color: #fff;
-    background: #244da8;
-  }
+:root[data-theme="dark"] .theme-control .theme-option[aria-pressed="true"] {
+  color: #07101f;
+  background: #d1ddff;
+  box-shadow: 0 0.24rem 0.7rem rgba(0, 0, 0, 0.24);
+}
 
-  .pwa-btn,
-  .pwa-btn.ios {
-    color: #c8d7ff;
-    background: #1a315e;
-  }
+:root[data-theme="dark"] .admin-access {
+  border-color: rgba(169, 194, 255, 0.2);
+  color: #d8e3ff;
+  background: rgba(23, 43, 82, 0.76);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0.4rem 1.2rem rgba(0, 0, 0, 0.14);
+}
 
-  .pwa-btn:hover:not(:disabled),
-  .pwa-btn.ios:hover:not(:disabled) {
-    color: #fff;
-    background: #244da8;
-  }
+:root[data-theme="dark"] .admin-access:hover {
+  color: #07101f;
+  background: #d1ddff;
+}
 
-  .btn-success {
-    color: #07101f;
-    background: #70d5aa;
-  }
+:root[data-theme="dark"] input {
+  border-color: #46566f;
+  color: var(--ink);
+  background: #111d30;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.24);
+}
 
-  .btn-success:hover:not(:disabled) {
-    color: #07101f;
-    background: #53b88e;
-  }
+:root[data-theme="dark"] input::placeholder {
+  color: #8f9caf;
+}
 
-  .app-state[data-state="offline"] {
-    border-color: #6d4b20;
-    color: #ffd092;
-    background: var(--warning-soft);
-  }
+:root[data-theme="dark"] input:hover {
+  border-color: #6a7b95;
+}
 
-  .app-state[data-state="update"] {
-    border-color: #35588f;
-    color: #c8d7ff;
-    background: var(--route-soft);
-  }
+:root[data-theme="dark"] button,
+:root[data-theme="dark"] .btn.primary,
+:root[data-theme="dark"] #btn {
+  color: #fff;
+  background: #3262d4;
+}
 
-  .app-state[data-state="error"] {
-    border-color: #71303b;
-    color: #ffb4bd;
-    background: var(--danger-soft);
-  }
+:root[data-theme="dark"] button:hover:not(:disabled),
+:root[data-theme="dark"] .btn.primary:hover:not(:disabled),
+:root[data-theme="dark"] #btn:hover:not(:disabled) {
+  color: #fff;
+  background: #244da8;
+}
 
-  .app-state[data-state="ready"] {
-    border-color: #2b664e;
-    color: #9ce5c2;
-    background: var(--success-soft);
-  }
+:root[data-theme="dark"] .pwa-btn,
+:root[data-theme="dark"] .pwa-btn.ios {
+  color: #c8d7ff;
+  background: #1a315e;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
 
-  .modal {
-    border-color: rgba(214, 225, 245, 0.1);
-    background: var(--surface);
-  }
+:root[data-theme="dark"] .pwa-btn:hover:not(:disabled),
+:root[data-theme="dark"] .pwa-btn.ios:hover:not(:disabled) {
+  color: #fff;
+  background: #244da8;
+}
 
-  .modal-actions {
-    border-color: #2b3a51;
-    background: var(--surface-soft);
-  }
+:root[data-theme="dark"] .pwa-box {
+  border-color: rgba(169, 194, 255, 0.18);
+  background:
+    radial-gradient(circle at 100% 0, rgba(64, 105, 203, 0.16), transparent 12rem),
+    #111d30;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0.65rem 1.8rem rgba(0, 0, 0, 0.14);
+}
 
-  .btn.ghost {
-    color: var(--ink);
-    background: #26344b;
-  }
+:root[data-theme="dark"] .pwa-visual {
+  color: #c8d7ff;
+  background: #1a315e;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
 
-  .pos-label,
-  .wait-pos .lbl {
-    color: #bed0f8;
-  }
+:root[data-theme="dark"] .btn-success {
+  color: #07101f;
+  background: #70d5aa;
+}
 
-  .davez-col {
-    border-color: #2e614c;
-    background: rgba(8, 29, 22, 0.66);
-  }
+:root[data-theme="dark"] .btn-success:hover:not(:disabled) {
+  color: #07101f;
+  background: #53b88e;
+}
 
-  .davez-title,
-  .davez-lbl,
-  .davez-state {
-    color: #9ce5c2;
-  }
+:root[data-theme="dark"] .app-state[data-state="offline"] {
+  border-color: #6d4b20;
+  color: #ffd092;
+  background: var(--warning-soft);
+}
 
-  .davez-state {
-    border-color: #39755b;
-    background: rgba(8, 29, 22, 0.5);
-  }
+:root[data-theme="dark"] .app-state[data-state="update"] {
+  border-color: #35588f;
+  color: #c8d7ff;
+  background: var(--route-soft);
+}
 
-  .wait-note {
-    border-color: #35527e;
-    color: #c2d1ec;
-    background: #14223a;
-  }
+:root[data-theme="dark"] .app-state[data-state="error"] {
+  border-color: #71303b;
+  color: #ffb4bd;
+  background: var(--danger-soft);
+}
 
-  .fab-refresh {
-    border-color: rgba(214, 225, 245, 0.14);
-    background: rgba(7, 16, 31, 0.94);
-  }
+:root[data-theme="dark"] .app-state[data-state="ready"] {
+  border-color: #2b664e;
+  color: #9ce5c2;
+  background: var(--success-soft);
+}
+
+:root[data-theme="dark"] .modal {
+  border-color: rgba(214, 225, 245, 0.1);
+  background: var(--surface);
+}
+
+:root[data-theme="dark"] .modal-actions {
+  border-color: #2b3a51;
+  background: var(--surface-soft);
+}
+
+:root[data-theme="dark"] .btn.ghost {
+  color: var(--ink);
+  background: #26344b;
+}
+
+:root[data-theme="dark"] .pos-label,
+:root[data-theme="dark"] .wait-pos .lbl {
+  color: #bed0f8;
+}
+
+:root[data-theme="dark"] .davez-col {
+  border-color: #2e614c;
+  background: rgba(8, 29, 22, 0.66);
+}
+
+:root[data-theme="dark"] .davez-title,
+:root[data-theme="dark"] .davez-lbl,
+:root[data-theme="dark"] .davez-state {
+  color: #9ce5c2;
+}
+
+:root[data-theme="dark"] .davez-state {
+  border-color: #39755b;
+  background: rgba(8, 29, 22, 0.5);
+}
+
+:root[data-theme="dark"] .wait-note {
+  border-color: #35527e;
+  color: #c2d1ec;
+  background: #14223a;
+}
+
+:root[data-theme="dark"] .fab-refresh {
+  border-color: rgba(214, 225, 245, 0.14);
+  background: rgba(7, 16, 31, 0.94);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1185,9 +1565,14 @@ button:disabled {
 
 @media (forced-colors: active) {
   .card,
+  .admin-access,
+  .theme-control,
+  .theme-option,
   .status,
   .app-state,
   .pwa-box,
+  .pwa-visual,
+  .pwa-btn-icon,
   .wait-pos,
   .davez-box {
     border: 1px solid CanvasText;
@@ -1202,9 +1587,24 @@ button:disabled {
   <div class="card-shell">
   <article class="card" aria-labelledby="pageTitle">
 
-    <div class="logo-top">
-      <img src="img/logo.png" alt="DaVez">
-    </div>
+    <header class="access-header">
+      <div class="logo-top">
+        <img src="img/logo.png" alt="DaVez">
+      </div>
+      <div class="header-actions">
+        <div class="theme-control" role="group" aria-label="Tema da tela">
+          <button class="theme-option" type="button" data-theme-option="light"
+            aria-pressed="false">Claro</button>
+          <button class="theme-option" type="button" data-theme-option="dark"
+            aria-pressed="false">Escuro</button>
+        </div>
+        <a class="admin-access" href="/admin.php"
+          aria-label="Acessar a área administrativa">
+          <span>Administração</span>
+          <span class="admin-access-icon" aria-hidden="true">↗</span>
+        </a>
+      </div>
+    </header>
 
     <div id="appState" class="app-state" role="status" aria-live="polite" aria-atomic="true" hidden>
       <span class="app-state-dot" aria-hidden="true"></span>
@@ -1217,7 +1617,7 @@ button:disabled {
     <section id="formBox" aria-labelledby="pageTitle">
       <p class="eyebrow">Fila operacional</p>
       <h1 id="pageTitle">Seu check-in começa aqui</h1>
-      <p class="lead">Informe seus dados do turno. Vamos confirmar sua localização antes de registrar sua chegada.</p>
+      <p class="lead">Informe seu nome e código individual. Vamos confirmar sua localização antes de registrar sua chegada.</p>
 
       <div class="field">
         <label for="nome">Seu nome</label>
@@ -1235,33 +1635,29 @@ button:disabled {
       </div>
 
       <div class="field">
-        <label for="token">Token do turno</label>
+        <label for="accessCode">Código individual</label>
         <input
-          id="token"
-          name="token"
+          id="accessCode"
+          name="access_code"
           type="text"
-          placeholder="Digite o token recebido"
+          placeholder="Digite seu código individual"
           inputmode="text"
           autocomplete="one-time-code"
-          maxlength="120"
-          aria-describedby="tokenHint"
+          maxlength="19"
+          aria-describedby="accessCodeHint"
           required
         />
-        <span id="tokenHint" class="field-hint">O token identifica a chamada ativa e muda conforme o ciclo.</span>
+        <span id="accessCodeHint" class="field-hint">Use o código individual recebido para este ciclo.</span>
       </div>
 
       <button id="btn" type="button" onclick="checkin()" aria-describedby="geoHint">Fazer check-in</button>
+      <button id="btnRecover" class="btn-recover" type="button"
+        onclick="recoverAccess()" aria-describedby="recoverHint">Recuperar acesso</button>
+      <span id="recoverHint" class="field-hint">Já fez check-in? Recupere sua sessão usando apenas o código individual.</span>
 
       <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></div>
       <p id="geoHint" class="small">Mantenha o GPS ligado. Usamos sua localização somente para validar a chegada.</p>
 
-      <!-- ===== PWA UI ===== -->
-      <aside id="pwaBox" class="pwa-box" aria-labelledby="pwaTitle">
-        <div id="pwaTitle" class="pwa-title">Acesso rápido no celular</div>
-        <div id="pwaText" class="pwa-text" aria-live="polite">Instale a DaVez na tela inicial para abrir a fila como aplicativo.</div>
-        <button id="btnInstalarApp" class="pwa-btn" type="button" hidden>Instalar DaVez</button>
-        <button id="btnInstalarIOS" class="pwa-btn ios" type="button" hidden>Como instalar no iPhone</button>
-      </aside>
     </section>
 
     <section id="waitBox" class="wait-box" aria-labelledby="waitTitle">
@@ -1298,7 +1694,7 @@ button:disabled {
             <div class="davez-num" id="davezPosNum">--</div>
           </div>
           <div class="davez-col">
-            <div class="davez-lbl">Você entrou depois de</div>
+            <div class="davez-lbl">Próximo da fila</div>
             <div class="davez-after" id="davezAfter">--</div>
           </div>
         </div>
@@ -1311,9 +1707,38 @@ button:disabled {
       </div>
 
       <button id="btnDaVez2" class="btn-success" type="button" onclick="entrarDaVez(true)">Estou na loja</button>
+      <button id="btnPublicLogout" class="btn-recover" type="button"
+        onclick="confirmPublicLogout()">Encerrar sessão neste dispositivo</button>
 
-      <p class="mini-link">Se precisar corrigir um check-in, fale com a equipe responsável pelo turno.</p>
+      <p class="mini-link">Sua identidade é protegida por uma sessão segura neste dispositivo. Se precisar corrigir um check-in, fale com a equipe responsável.</p>
     </section>
+
+    <!-- ===== PWA UI ===== -->
+    <aside id="pwaBox" class="pwa-box show" data-install-state="manual"
+      aria-labelledby="pwaTitle">
+      <div class="pwa-visual" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <rect x="6.5" y="2.5" width="11" height="19" rx="2.5" stroke-width="1.7"/>
+          <path d="M9.5 5.5h5M10.5 18.5h3" stroke-width="1.7" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="pwa-copy">
+        <span class="pwa-kicker">Acesso rápido</span>
+        <h2 id="pwaTitle" class="pwa-title">Instalar aplicativo</h2>
+        <p id="pwaText" class="pwa-text" role="status"
+          aria-live="polite" aria-atomic="true">Você pode instalar este sistema na tela inicial do celular para abrir como app.</p>
+      </div>
+      <div class="pwa-actions">
+        <button id="btnInstalarApp" class="pwa-btn" type="button">
+          <span id="btnInstallLabel">Ver como instalar</span>
+          <span class="pwa-btn-icon" aria-hidden="true">↓</span>
+        </button>
+        <button id="btnInstalarIOS" class="pwa-btn ios" type="button" hidden>
+          <span>Como instalar no iPhone</span>
+          <span class="pwa-btn-icon" aria-hidden="true">↗</span>
+        </button>
+      </div>
+    </aside>
 
   </article>
   </div>
@@ -1347,22 +1772,62 @@ button:disabled {
 console.log("SCRIPT OK");
 
 /* ===== Config ===== */
-const CHECKIN_URL = "checkin.php?v=3";
-const DAVEZ_ENTER_URL = "DaVez/entrar.php?v=1";
-const DAVEZ_LIST_URL = "DaVez/listar.php?v=1";
-const RELOGIN_URL = "relogin.php?v=1";
-const SESSION_INFO_URL = "session_info.php?v=1";
+const THEME_STORAGE_KEY = "davez_theme";
+const CHECKIN_URL = "checkin.php?v=4";
+const DAVEZ_ENTER_URL = "DaVez/entrar.php?v=2";
+const DAVEZ_LIST_URL = "DaVez/listar.php?v=2";
+const RECOVER_URL = "recover.php?v=1";
+const PUBLIC_LOGOUT_URL = "public_logout.php?v=1";
+const SESSION_INFO_URL = "session_info.php?v=2";
 
 /* ===== Helpers ===== */
-function operationalDayKey() {
-  const d = new Date();
-  const ref = new Date(d);
+function applyTheme(theme, persist = false) {
+  const normalizedTheme = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = normalizedTheme;
+  document.documentElement.style.colorScheme = normalizedTheme;
 
-  if (ref.getHours() < 6) {
-    ref.setDate(ref.getDate() - 1);
+  const themeColor = document.getElementById("appThemeColor");
+  if (themeColor) {
+    themeColor.setAttribute(
+      "content",
+      normalizedTheme === "dark" ? "#07101f" : "#f4f6fa"
+    );
   }
 
-  return `${ref.getFullYear()}-${String(ref.getMonth()+1).padStart(2,'0')}-${String(ref.getDate()).padStart(2,'0')}`;
+  document.querySelectorAll("[data-theme-option]").forEach((option) => {
+    const isSelected = option.dataset.themeOption === normalizedTheme;
+    option.setAttribute("aria-pressed", String(isSelected));
+  });
+
+  if (persist) {
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, normalizedTheme);
+    } catch (error) {
+      // A interface continua funcional mesmo quando o storage está bloqueado.
+    }
+  }
+}
+
+function readStoredTheme() {
+  try {
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return storedTheme === "light" || storedTheme === "dark"
+      ? storedTheme
+      : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function observeMediaQuery(mediaQuery, listener) {
+  if (typeof mediaQuery.addEventListener === "function") {
+    mediaQuery.addEventListener("change", listener);
+    return;
+  }
+
+  if (typeof mediaQuery.addListener === "function") {
+    mediaQuery.addListener(listener);
+  }
 }
 
 function setStatus(msg, tone = "info") {
@@ -1378,110 +1843,74 @@ function clearStatus() {
   el.classList.remove("show");
 }
 
-function getClientId() {
-  let cid = localStorage.getItem("cid");
-  if (!cid || !/^[a-f0-9]{32}$/.test(cid)) {
-    const arr = new Uint8Array(16);
-    crypto.getRandomValues(arr);
-    cid = Array.from(arr).map(b => b.toString(16).padStart(2, "0")).join("");
-    localStorage.setItem("cid", cid);
-  }
-  return cid;
-}
-
-/* ===== Nome fallback ===== */
-function getSavedNameFallback(){
-  const n1 = (localStorage.getItem("motoboy_nome") || "").trim();
-  if (n1) return n1;
-
-  const n2 = (localStorage.getItem("checked_in_name") || "").trim();
-  if (n2) return n2;
-
-  return "";
-}
-
-function saveNameEverywhere(nome){
-  try{
-    if (!nome) return;
-    localStorage.setItem("motoboy_nome", nome);
-    localStorage.setItem("checked_in_name", nome);
-  }catch(e){}
-}
-
-/* ===== Login temporário ===== */
-function getSavedAuth(){
-  return {
-    nome: (localStorage.getItem("motoboy_nome") || "").trim(),
-    token: (localStorage.getItem("motoboy_token") || "").trim(),
-  };
-}
-
-function saveAuth(nome, token){
-  try{
-    if (nome) saveNameEverywhere(nome);
-    if (token) localStorage.setItem("motoboy_token", token);
-    localStorage.setItem("motoboy_auth_day", operationalDayKey());
-  }catch(e){}
-}
-
-function autofillAuthInputs(){
-  const { nome, token } = getSavedAuth();
-  const nomeEl = document.getElementById("nome");
-  const tokenEl = document.getElementById("token");
-  const fallbackNome = getSavedNameFallback();
-
-  if (nomeEl && !String(nomeEl.value||"").trim() && (nome || fallbackNome)) {
-    nomeEl.value = nome || fallbackNome;
-  }
-  if (tokenEl && !String(tokenEl.value||"").trim() && token) {
-    tokenEl.value = token;
+class PublicApiError extends Error {
+  constructor(message, code="request_failed", status=0) {
+    super(message);
+    this.name = "PublicApiError";
+    this.code = code;
+    this.status = status;
   }
 }
-autofillAuthInputs();
 
-function getSavedAuthLoose(){
-  return {
-    nome: (localStorage.getItem("motoboy_nome") || getSavedNameFallback() || "").trim(),
-    token: (localStorage.getItem("motoboy_token") || "").trim()
-  };
+function publicErrorMessage(payload, fallback="Não foi possível concluir a solicitação.") {
+  if (payload && payload.error && typeof payload.error.message === "string") {
+    return payload.error.message;
+  }
+  if (payload && typeof payload.message === "string") return payload.message;
+  if (payload && typeof payload.msg === "string") return payload.msg;
+  return fallback;
 }
 
-/* ===== Reset seletivo quando token muda ===== */
-function clearTokenDependentCacheOnCycleChange(){
-  try{
-    // NÃO remover token
-    // localStorage.removeItem("motoboy_token");
+async function fetchPublicJson(url, options={}) {
+  let response;
+  try {
+    response = await fetch(url, {
+      cache: "no-store",
+      credentials: "same-origin",
+      ...options,
+    });
+  } catch (error) {
+    throw new PublicApiError("Sem conexão com o servidor.", "network_error");
+  }
 
-    localStorage.removeItem("checked_in_active");
-    localStorage.removeItem("checked_in_name");
-    localStorage.removeItem("checked_in_pos");
-
-    localStorage.removeItem("davez_status");
-    localStorage.removeItem("davez_active");
-    localStorage.removeItem("davez_pos");
-    localStorage.removeItem("davez_after");
-    localStorage.removeItem("davez_day");
-  }catch(e){}
-}
-
-async function syncTokenCycleCache(){
-  try{
-    const r = await fetch(SESSION_INFO_URL, { cache: "no-store" });
-    const data = await r.json().catch(()=>null);
-
-    if (!data || !data.ok) return;
-
-    const currentCycle = String(data.token_cycle_start || "").trim();
-    if (!currentCycle) return;
-
-    const savedCycle = String(localStorage.getItem("last_token_cycle_start") || "").trim();
-
-    if (savedCycle && savedCycle !== currentCycle) {
-      clearTokenDependentCacheOnCycleChange();
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const body = await response.text().catch(()=>"");
+    if (isInfinityFreeChallenge(body)) {
+      throw new PublicApiError(
+        "O provedor solicitou uma nova validação. Atualize a página e tente novamente.",
+        "provider_challenge",
+        response.status
+      );
     }
+    throw new PublicApiError(
+      "O servidor retornou uma resposta inesperada.",
+      "invalid_response",
+      response.status
+    );
+  }
 
-    localStorage.setItem("last_token_cycle_start", currentCycle);
-  } catch(e){}
+  const payload = await response.json().catch(()=>null);
+  if (!payload) {
+    throw new PublicApiError(
+      "O servidor retornou uma resposta inválida.",
+      "invalid_response",
+      response.status
+    );
+  }
+
+  if (!response.ok || payload.ok !== true) {
+    const code = payload.error && typeof payload.error.code === "string"
+      ? payload.error.code
+      : "request_failed";
+    throw new PublicApiError(
+      publicErrorMessage(payload),
+      code,
+      response.status
+    );
+  }
+
+  return payload;
 }
 
 /* ===== Modal acessível ===== */
@@ -1666,87 +2095,82 @@ function setWaitingMode(nome, pos) {
     waitPosNum.textContent = "--";
   }
 
-  localStorage.setItem("checked_in_active", "1");
-  if (nome) localStorage.setItem("checked_in_name", nome);
-
-  if (typeof pos === "number" && pos > 0) {
-    localStorage.setItem("checked_in_pos", String(pos));
-  } else {
-    localStorage.removeItem("checked_in_pos");
-  }
-
-  if (nome) localStorage.setItem("motoboy_nome", nome);
-
   ensureDaVezBoxVisible();
 }
 
-/* ===== Re-login ===== */
-async function tryRelogin(){
-  const a = getSavedAuthLoose();
-  if (!a.nome || !a.token) return;
-
-  try{
-    const fd = new FormData();
-    fd.append("nome", a.nome);
-    fd.append("token", a.token);
-
-    const r = await fetch(RELOGIN_URL, { method:"POST", body: fd, cache:"no-store" });
-    const data = await r.json().catch(()=>null);
-
-    if (data && data.ok){
-      saveAuth(data.nome || a.nome, a.token);
-      setWaitingMode(data.nome || a.nome, (typeof data.pos === "number" ? data.pos : null));
-      return;
-    }
-
-    localStorage.removeItem("checked_in_active");
-    localStorage.removeItem("checked_in_name");
-    localStorage.removeItem("checked_in_pos");
-  }catch(e){}
+function setFormMode(me=null) {
+  const formBox = document.getElementById("formBox");
+  const waitBox = document.getElementById("waitBox");
+  const nomeEl = document.getElementById("nome");
+  formBox.style.display = "";
+  waitBox.classList.remove("show");
+  if (me && nomeEl && !nomeEl.value) {
+    nomeEl.value = String(me.display_name || "");
+  }
+  clearDaVezState();
 }
 
-async function relogarEIrProAguardando(nome, token, silent=false){
-  try{
-    if (!silent) setStatus("Você já fez check-in neste ciclo. Estamos te logando…");
+function getCheckinFromMe(me) {
+  if (!me || typeof me !== "object") return null;
+  if (me.checkin && typeof me.checkin === "object") return me.checkin;
+  if (me.checked_in === true || Number.isFinite(Number(me.checkin_position))) {
+    return {
+      active: me.checked_in !== false,
+      position: Number(me.checkin_position) || null,
+    };
+  }
+  return null;
+}
 
-    const fd = new FormData();
-    fd.append("nome", String(nome || "").trim());
-    fd.append("token", String(token || "").trim());
+function applySessionMe(me) {
+  if (!me || typeof me !== "object") {
+    setFormMode();
+    return;
+  }
 
-    const r = await fetch(RELOGIN_URL, { method:"POST", body: fd, cache:"no-store" });
-    const data = await r.json().catch(()=>null);
+  const displayName = String(me.display_name || "");
+  const checkinState = getCheckinFromMe(me);
+  if (checkinState && checkinState.active !== false) {
+    const position = Number(checkinState.position);
+    setWaitingMode(
+      displayName,
+      Number.isFinite(position) && position > 0 ? position : null
+    );
+  } else {
+    setFormMode(me);
+  }
 
-    if (data && data.ok){
-      saveAuth(data.nome || nome, token);
-      if (!silent) clearStatus();
-      setWaitingMode(data.nome || nome, (typeof data.pos === "number" ? data.pos : null));
-      return true;
-    }
-
-    if (!silent) clearStatus();
-    return false;
-  }catch(e){
-    if (!silent) clearStatus();
-    return false;
+  if (me.davez && typeof me.davez === "object") {
+    setDaVezStateUI(me.davez);
   }
 }
 
-/* ===== Inicialização ===== */
-(async function initLoginFlow(){
-  await syncTokenCycleCache();
+async function refreshSessionInfo({silent=false}={}) {
+  try {
+    const data = await fetchPublicJson(SESSION_INFO_URL);
+    if (Number(data.identity_version) !== 2) {
+      throw new PublicApiError(
+        "A versão de identidade do servidor é incompatível.",
+        "identity_version_mismatch"
+      );
+    }
 
-  const active = (localStorage.getItem("checked_in_active") || "") === "1";
-  const nome = (localStorage.getItem("checked_in_name") || "").trim();
-  const pos = parseInt(localStorage.getItem("checked_in_pos") || "", 10);
-
-  autofillAuthInputs();
-
-  if (active && nome) {
-    setWaitingMode(nome, Number.isFinite(pos) ? pos : undefined);
+    if (data.authenticated === true && data.me) {
+      applySessionMe(data.me);
+    } else {
+      setFormMode();
+    }
+    return data;
+  } catch (error) {
+    if (!silent) {
+      setAppState(
+        error.code === "network_error" ? "offline" : "error",
+        error.message
+      );
+    }
+    return null;
   }
-
-  tryRelogin();
-})();
+}
 
 /* ===== DA VEZ ===== */
 let davezPollTimer = null;
@@ -1768,13 +2192,6 @@ function setDaVezBox(pos, depoisDe){
   } else {
     after.textContent = "--";
   }
-
-  try{
-    localStorage.setItem("davez_day", operationalDayKey());
-    localStorage.setItem("davez_pos", String(pos || ""));
-    localStorage.setItem("davez_after", String(depoisDe || ""));
-    localStorage.setItem("davez_active", "1");
-  }catch(e){}
 }
 
 function clearDaVezState(){
@@ -1806,13 +2223,6 @@ function clearDaVezState(){
     box.classList.add("show");
   }
 
-  try{
-    localStorage.removeItem("davez_status");
-    localStorage.removeItem("davez_active");
-    localStorage.removeItem("davez_pos");
-    localStorage.removeItem("davez_after");
-    localStorage.removeItem("davez_day");
-  }catch(e){}
 }
 
 function humanStatusLabel(st){
@@ -1843,10 +2253,6 @@ function setDaVezStateUI({ status, pos, depoisDe }){
   const s = String(status || "").toLowerCase().trim();
   stateEl.textContent = "Status: " + humanStatusLabel(status);
 
-  try{
-    localStorage.setItem("davez_status", s);
-  }catch(e){}
-
   if (s === "na_fila") {
     btn.disabled = true;
     btn.textContent = "Aguardando despacho";
@@ -1865,86 +2271,57 @@ function setDaVezStateUI({ status, pos, depoisDe }){
 
 async function refreshDaVezFromServer(){
   try{
-    const data = await fetch(DAVEZ_LIST_URL, { cache: "no-store" }).then(r=>r.json()).catch(()=>null);
-    if (!data || !data.ok || !Array.isArray(data.fila)) return;
+    const data = await fetchPublicJson(DAVEZ_LIST_URL);
+    if (Number(data.identity_version) !== 2) return;
 
-    const cid = getClientId();
-    const todosDoCid = data.fila.filter(x => String(x.client_id || '') === cid);
+    const nextName = data.next && typeof data.next.display_name === "string"
+      ? data.next.display_name
+      : null;
+    const me = data.me && typeof data.me === "object" ? data.me : null;
+    const waitingCount = data.counts && Number.isFinite(Number(data.counts.waiting))
+      ? Number(data.counts.waiting)
+      : null;
 
-    if (!todosDoCid.length) {
+    if (!me) {
       clearDaVezState();
-      return;
-    }
-
-    const me = todosDoCid.sort((a, b) => {
-      const ta = new Date(a.entered_at || 0).getTime();
-      const tb = new Date(b.entered_at || 0).getTime();
-      return tb - ta;
-    })[0];
-
-    if (String(me.status || '') !== 'na_fila') {
-      setDaVezStateUI({
-        status: me.status,
-        pos: null,
-        depoisDe: null
-      });
-      return;
-    }
-
-    const naFila = data.fila.filter(x => String(x.status || '') === 'na_fila');
-    const idx = naFila.findIndex(x => String(x.client_id || '') === cid);
-
-    let pos = null;
-    let depoisDe = null;
-
-    if (idx >= 0) {
-      pos = idx + 1;
-      if (idx > 0) {
-        const anterior = naFila[idx - 1];
-        depoisDe = (anterior && (anterior.nome || anterior.name)) ? (anterior.nome || anterior.name) : null;
+      if (nextName) {
+        document.getElementById("davezAfter").textContent = nextName;
       }
+      return;
     }
 
     setDaVezStateUI({
-      status: me.status,
-      pos,
-      depoisDe
+      status: me.status || (me.is_next === true ? "na_fila" : "aguardando"),
+      pos: Number.isFinite(Number(me.position)) ? Number(me.position) : null,
+      depoisDe: nextName
     });
 
-  } catch(e){}
+    const stateEl = document.getElementById("davezState");
+    if (me.is_next === true) stateEl.textContent = "Status: você é o próximo";
+    if (waitingCount !== null) stateEl.textContent += ` • ${waitingCount} aguardando`;
+  } catch(e){
+    if (e.code !== "network_error") {
+      setAppState("error", e.message, false);
+    }
+  }
 }
 
 function startDaVezPolling(){
   if (davezPollTimer) return;
-  refreshDaVezFromServer();
-  davezPollTimer = setInterval(refreshDaVezFromServer, 5000);
+  davezPollTimer = setInterval(refreshServerTruth, 5000);
 }
 
-(function restoreDaVezBox(){
-  try{
-    const active = (localStorage.getItem("davez_active") || "") === "1";
-    const day = (localStorage.getItem("davez_day") || "");
-    const status = (localStorage.getItem("davez_status") || "").trim();
-    const p = parseInt(localStorage.getItem("davez_pos") || "", 10);
-    const a = (localStorage.getItem("davez_after") || "").trim();
-
-    if (active && day === operationalDayKey()) {
-      ensureDaVezBoxVisible();
-
-      if (Number.isFinite(p) && p > 0) {
-        setDaVezBox(p, a || null);
-      }
-
-      setDaVezStateUI({
-        status: status || "na_fila",
-        pos: Number.isFinite(p) ? p : null,
-        depoisDe: a || null
-      });
-    }
-  }catch(e){}
-
-  startDaVezPolling();
-})();
+let serverTruthRefreshing = false;
+async function refreshServerTruth() {
+  if (serverTruthRefreshing) return;
+  serverTruthRefreshing = true;
+  try {
+    await refreshSessionInfo({silent:true});
+    await refreshDaVezFromServer();
+  } finally {
+    serverTruthRefreshing = false;
+  }
+}
 
 /* ===== Conectividade e atualização ===== */
 let waitingServiceWorker = null;
@@ -2104,112 +2481,22 @@ function isInfinityFreeChallenge(html) {
   );
 }
 
-function submitAsForm(payload) {
-  const form = document.createElement("form");
-  form.method = "POST";
-  form.action = CHECKIN_URL;
-  form.style.display = "none";
-
-  Object.entries(payload).forEach(([k, v]) => {
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = k;
-    input.value = String(v);
-    form.appendChild(input);
-  });
-
-  document.body.appendChild(form);
-  form.submit();
-}
-
-function startWarmup(payload) {
-  sessionStorage.setItem("pending_checkin", JSON.stringify(payload));
-  setStatus("Validando servidor… (isso é do provedor)");
-  window.location.href = CHECKIN_URL + "&warmup=1";
-}
-
 async function enviarCheckin(payload) {
   const dados = new FormData();
   Object.entries(payload).forEach(([k, v]) => dados.append(k, v));
-
-  const r = await fetch(CHECKIN_URL, { method: "POST", body: dados });
-  const t = await r.text();
-
-  if (isInfinityFreeChallenge(t)) {
-    startWarmup(payload);
-    return { ok: false, text: "challenge" };
-  }
-
-  return { ok: r.ok, status: r.status, text: t };
-}
-
-(function autoSubmitAfterWarmup(){
-  const qs = new URLSearchParams(window.location.search);
-  if (qs.get("warm") === "1") {
-    const raw = sessionStorage.getItem("pending_checkin");
-    if (raw) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-      try {
-        const payload = JSON.parse(raw);
-        sessionStorage.removeItem("pending_checkin");
-        setStatus("Finalizando check-in…");
-        setTimeout(() => submitAsForm(payload), 150);
-      } catch (_) {
-        sessionStorage.removeItem("pending_checkin");
-      }
-    }
-  }
-})();
-
-/* ===== Util ===== */
-function extractPosFromText(t){
-  const s = String(t || "");
-  const m = s.match(/posi[cç][aã]o\s+na\s+lista\s*:\s*(\d{1,5})/i);
-  return m ? parseInt(m[1], 10) : null;
+  return fetchPublicJson(CHECKIN_URL, {
+    method: "POST",
+    body: dados,
+  });
 }
 
 /* ===== DA VEZ ===== */
 async function entrarDaVez(fromWait=false){
   clearStatus();
-
-  const nomeEl = document.getElementById("nome");
-  const tokenEl = document.getElementById("token");
-
-  const saved = getSavedAuth();
-
-  const nomeDigitado = (nomeEl ? nomeEl.value : "").trim();
-  const tokenDigitado = (tokenEl ? tokenEl.value : "").trim();
-
-  const nome = nomeDigitado || saved.nome || getSavedNameFallback();
-  const token = tokenDigitado || saved.token;
-
-  if (nomeEl && nome && !nomeDigitado) nomeEl.value = nome;
-  if (tokenEl && token && !tokenDigitado) tokenEl.value = token;
-
-  if (!nome){
-    showModal({
-      type:"warn",
-      title:"Faltou o nome",
-      message:"Digite seu nome para entrar na fila da vez.",
-      actions:[{label:"OK"}]
-    });
-    if (nomeEl) nomeEl.focus();
-    return;
-  }
-
-  if (!token){
-    showModal({
-      type:"warn",
-      title:"Faltou o token",
-      message:"Digite o token do ciclo para continuar.",
-      actions:[{label:"OK"}]
-    });
-    if (tokenEl) tokenEl.focus();
-    return;
-  }
-
-  saveAuth(nome, token);
-
+  const button = document.getElementById("btnDaVez2");
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = "Confirmando localização…";
   let geo;
   try{
     geo = await geoloc();
@@ -2217,110 +2504,41 @@ async function entrarDaVez(fromWait=false){
     showModal({
       type:"err",
       title:"Localização falhou",
-      message:"Não deu pra pegar sua localização. Ative GPS e tente de novo."
+      message:geoErrorMessage(e)
     });
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    button.textContent = "Estou na loja";
     return;
   }
 
-  const lat = geo.coords.latitude;
-  const lng = geo.coords.longitude;
-
   try{
     const fd = new FormData();
-    fd.append("nome", nome);
-    fd.append("token", token);
-    fd.append("lat", String(lat));
-    fd.append("lng", String(lng));
-    fd.append("client_id", getClientId());
+    fd.append("lat", String(geo.coords.latitude));
+    fd.append("lng", String(geo.coords.longitude));
 
-    const resp = await fetch(DAVEZ_ENTER_URL, {
+    const data = await fetchPublicJson(DAVEZ_ENTER_URL, {
       method: "POST",
       body: fd
     });
-
-    const txt = await resp.text();
-
-    if (!resp.ok){
-      showModal({
-        type:"err",
-        title:"Não entrou na fila",
-        message: txt || ("Erro " + resp.status)
-      });
-      return;
-    }
-
-    let p = null;
-    let depoisDe = null;
-
-    try{
-      const listResp = await fetch(DAVEZ_LIST_URL, { cache: "no-store" });
-      const data = await listResp.json();
-
-      if (data && data.ok && Array.isArray(data.fila)){
-        const cid = getClientId();
-        const naFila = data.fila.filter(x => String(x.status || "") === "na_fila");
-        const idx = naFila.findIndex(x => String(x.client_id || "") === cid);
-
-        if (idx >= 0) {
-          p = idx + 1;
-          if (idx > 0) {
-            const anterior = naFila[idx - 1];
-            depoisDe = (anterior && (anterior.nome || anterior.name))
-              ? (anterior.nome || anterior.name)
-              : null;
-          }
-        }
-      }
-    } catch(e){}
-
-    setDaVezBox(p, depoisDe);
-
-    const btn = document.getElementById("btnDaVez2");
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = "Aguardando despacho";
-    }
-
-    setDaVezStateUI({ status: "na_fila", pos: p, depoisDe: depoisDe });
+    if (data.me) applySessionMe(data.me);
+    await refreshServerTruth();
     startDaVezPolling();
-
-    setStatus(txt || "Você entrou na fila DA VEZ.");
+    setStatus("Você entrou na fila DaVez.");
     setTimeout(clearStatus, 2500);
-
   } catch(e){
-    setStatus("Atualizando fila…");
-    startDaVezPolling();
-
-    setTimeout(async () => {
-      try{
-        await refreshDaVezFromServer();
-      } catch(_) {}
-
-      clearStatus();
-
-      const box = document.getElementById("davezBox");
-      const btn = document.getElementById("btnDaVez2");
-      const posEl = document.getElementById("davezPosNum");
-
-      const entrouNaFila =
-        box &&
-        box.classList.contains("show") &&
-        posEl &&
-        String(posEl.textContent || "").trim() !== "--";
-
-      if (entrouNaFila) return;
-
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = "Estou na loja";
-      }
-
-      showModal({
-        type:"err",
-        title:"Erro",
-        message:"Não consegui confirmar sua entrada na fila da vez. Tente novamente."
-      });
-    }, 1200);
+    showModal({
+      type:"err",
+      title:e.status === 401 ? "Sessão expirada" : "Não entrou na fila",
+      message:e.message || "Não foi possível confirmar sua entrada."
+    });
+    if (e.status === 401) await refreshSessionInfo();
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    if (button.textContent !== "Aguardando despacho") {
+      button.textContent = "Estou na loja";
+    }
   }
 }
 
@@ -2328,30 +2546,20 @@ async function entrarDaVez(fromWait=false){
 async function checkin() {
   const btn = document.getElementById("btn");
   const nomeEl = document.getElementById("nome");
-  const tokenEl = document.getElementById("token");
-
-  const saved = getSavedAuth();
-  const nomeDigitado = (nomeEl.value || "").trim();
-  const tokenDigitado = (tokenEl.value || "").trim();
-
-  const nome = nomeDigitado || saved.nome || getSavedNameFallback();
-  const token = tokenDigitado || saved.token;
-
-  if (nome && !nomeDigitado) nomeEl.value = nome;
-  if (token && !tokenDigitado) tokenEl.value = token;
+  const accessCodeEl = document.getElementById("accessCode");
+  const nome = (nomeEl.value || "").trim();
+  const accessCode = (accessCodeEl.value || "").trim();
 
   if (!nome) {
     showModal({ type:"warn", title:"Faltou seu nome", message:"Digite seu nome para continuar.", actions:[{label:"OK"}] });
     nomeEl.focus();
     return;
   }
-  if (!token) {
-    showModal({ type:"warn", title:"Faltou o token", message:"Digite o token do ciclo para continuar.", actions:[{label:"OK"}] });
-    tokenEl.focus();
+  if (!accessCode) {
+    showModal({ type:"warn", title:"Faltou o código", message:"Digite seu código individual para continuar.", actions:[{label:"OK"}] });
+    accessCodeEl.focus();
     return;
   }
-
-  saveAuth(nome, token);
 
   btn.disabled = true;
   btn.setAttribute("aria-busy", "true");
@@ -2366,67 +2574,38 @@ async function checkin() {
 
     setStatus(`Localização ok (precisão ~ ${Math.round(acc)}m). Enviando check-in…`);
 
-    const payload = { nome, token, lat, lng, client_id: getClientId() };
-    const resp = await enviarCheckin(payload);
-    if (resp.text === "challenge") return;
-
-    const t = (resp.text || "").trim();
-    const posNum = extractPosFromText(t);
-
-    if (resp.ok && /sucesso|confirmado/i.test(t)) {
-      clearStatus();
-      showModal({
-        type: "ok",
-        title: "Check-in confirmado",
-        message: "Seu check-in foi registrado com sucesso.",
-        position: posNum,
-        actions: [{
-          label: "Entendi",
-          kind: "primary",
-          onClick: () => setWaitingMode(nome, posNum)
-        }]
-      });
-      return;
-    }
-
-    clearStatus();
-
-    if (/já realizado|duplicado/i.test(t) || resp.status === 409) {
-      const ok = await relogarEIrProAguardando(nome, token);
-      if (!ok){
-        showModal({
-          type: "warn",
-          title: "Você já fez check-in neste ciclo",
-          message: "Você já fez check-in neste ciclo.\nTentamos te logar automaticamente, mas não conseguimos.\nSe estiver testando, peça para o admin limpar a lista do ciclo atual.",
-          actions: [{ label: "OK", kind: "primary" }]
-        });
-      }
-      return;
-    }
-
-    if (/token/i.test(t) || resp.status === 403) {
-      showModal({
-        type: "err",
-        title: "Não foi possível validar",
-        message: t || "Falha ao validar token/chamada.",
-        actions: [{ label: "OK", kind: "primary" }]
-      });
-      return;
-    }
-
-    showModal({
-      type: "err",
-      title: "Não foi possível realizar o check-in",
-      message: t || "Erro desconhecido.",
-      actions: [{ label: "OK", kind: "primary" }]
+    const data = await enviarCheckin({
+      nome,
+      access_code: accessCode,
+      lat,
+      lng
     });
-
+    clearStatus();
+    const me = data.me || null;
+    const checkinState = getCheckinFromMe(me);
+    const position = checkinState ? Number(checkinState.position) : null;
+    showModal({
+      type: "ok",
+      title: "Check-in confirmado",
+      message: "Seu check-in foi registrado com sucesso.",
+      position: Number.isFinite(position) && position > 0 ? position : null,
+      actions: [{
+        label: "Entendi",
+        kind: "primary",
+        onClick: () => applySessionMe(me)
+      }]
+    });
+    accessCodeEl.value = "";
   } catch (err) {
     clearStatus();
     showModal({
       type: "err",
-      title: "Problema com localização",
-      message: geoErrorMessage(err),
+      title: err instanceof PublicApiError
+        ? "Não foi possível realizar o check-in"
+        : "Problema com localização",
+      message: err instanceof PublicApiError
+        ? err.message
+        : geoErrorMessage(err),
       actions: [{ label: "OK", kind: "primary" }]
     });
   } finally {
@@ -2435,6 +2614,102 @@ async function checkin() {
     btn.textContent = "Fazer check-in";
   }
 }
+
+async function recoverAccess() {
+  const button = document.getElementById("btnRecover");
+  const accessCodeEl = document.getElementById("accessCode");
+  const accessCode = (accessCodeEl.value || "").trim();
+  if (!accessCode) {
+    showModal({
+      type:"warn",
+      title:"Faltou o código",
+      message:"Digite seu código individual para recuperar o acesso."
+    });
+    accessCodeEl.focus();
+    return;
+  }
+
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = "Recuperando…";
+  setStatus("Recuperando sua sessão segura…");
+
+  try {
+    const form = new FormData();
+    form.append("access_code", accessCode);
+    const data = await fetchPublicJson(RECOVER_URL, {
+      method:"POST",
+      body:form
+    });
+    accessCodeEl.value = "";
+    clearStatus();
+    if (data.me) applySessionMe(data.me);
+    await refreshServerTruth();
+    showModal({
+      type:"ok",
+      title:"Acesso recuperado",
+      message:"Sua sessão foi restaurada neste dispositivo."
+    });
+  } catch (error) {
+    clearStatus();
+    showModal({
+      type:"err",
+      title:"Não foi possível recuperar",
+      message:error.message || "Confira o código e tente novamente."
+    });
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    button.textContent = "Recuperar acesso";
+  }
+}
+
+function confirmPublicLogout() {
+  showModal({
+    type:"warn",
+    title:"Encerrar sessão?",
+    message:"Este dispositivo perderá o acesso. Para voltar, será necessário solicitar um novo código de recuperação à equipe.",
+    actions:[
+      {label:"Cancelar", kind:"ghost"},
+      {
+        label:"Encerrar sessão",
+        kind:"primary",
+        onClick:logoutPublicSession
+      }
+    ]
+  });
+}
+
+async function logoutPublicSession() {
+  const button = document.getElementById("btnPublicLogout");
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = "Encerrando…";
+
+  try {
+    await fetchPublicJson(PUBLIC_LOGOUT_URL, {method:"POST"});
+    document.getElementById("nome").value = "";
+    document.getElementById("accessCode").value = "";
+    setFormMode();
+    await refreshServerTruth();
+    setStatus("Sessão encerrada neste dispositivo.", "ok");
+  } catch (error) {
+    showModal({
+      type:"err",
+      title:"Não foi possível encerrar",
+      message:error.message || "Tente novamente."
+    });
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    button.textContent = "Encerrar sessão neste dispositivo";
+  }
+}
+
+(async function initIdentityV2() {
+  await refreshServerTruth();
+  startDaVezPolling();
+})();
 
 /* ===== PWA / INSTALAÇÃO ===== */
 let deferredPrompt = null;
@@ -2448,58 +2723,126 @@ function isInStandaloneMode() {
   return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
 }
 
-function setupPWAInstallUI() {
+function renderPWAInstallState(state, overrideMessage = "") {
   const pwaBox = document.getElementById("pwaBox");
+  const pwaTitle = document.getElementById("pwaTitle");
   const pwaText = document.getElementById("pwaText");
   const btnInstall = document.getElementById("btnInstalarApp");
+  const btnInstallLabel = document.getElementById("btnInstallLabel");
   const btnIOS = document.getElementById("btnInstalarIOS");
 
-  if (!pwaBox || !pwaText || !btnInstall || !btnIOS) return;
+  if (!pwaBox || !pwaTitle || !pwaText || !btnInstall || !btnInstallLabel || !btnIOS) return;
 
-  pwaBox.classList.remove("show");
-  btnInstall.hidden = true;
-  btnIOS.hidden = true;
+  const states = {
+    manual: {
+      title: "Instalar aplicativo",
+      message: "Você pode instalar este sistema na tela inicial do celular para abrir como app.",
+      showInstall: true,
+      installLabel: "Ver como instalar",
+      showIOS: false
+    },
+    available: {
+      title: "Instalar aplicativo",
+      message: "A instalação está disponível neste dispositivo.",
+      showInstall: true,
+      installLabel: "Instalar aplicativo",
+      showIOS: false
+    },
+    ios: {
+      title: "Instalar aplicativo",
+      message: "No iPhone ou iPad, abra Compartilhar e escolha “Adicionar à Tela de Início”.",
+      showInstall: false,
+      installLabel: "",
+      showIOS: true
+    },
+    accepted: {
+      title: "Instalação solicitada",
+      message: "Conclua a confirmação do navegador para adicionar a DaVez ao dispositivo.",
+      showInstall: false,
+      installLabel: "",
+      showIOS: false
+    },
+    installed: {
+      title: "Aplicativo instalado",
+      message: "A DaVez já está instalada neste dispositivo e pode ser aberta pela tela inicial.",
+      showInstall: false,
+      installLabel: "",
+      showIOS: false
+    },
+    cancelled: {
+      title: "Instalar aplicativo",
+      message: "A instalação foi cancelada. Você ainda pode instalar pelo menu do navegador.",
+      showInstall: true,
+      installLabel: "Ver como instalar",
+      showIOS: false
+    }
+  };
+  const view = states[state] || states.manual;
 
+  pwaBox.classList.add("show");
+  pwaBox.dataset.installState = state in states ? state : "manual";
+  pwaTitle.textContent = view.title;
+  pwaText.textContent = overrideMessage || view.message;
+  btnInstall.hidden = !view.showInstall;
+  btnInstallLabel.textContent = view.installLabel;
+  btnIOS.hidden = !view.showIOS;
+}
+
+function setupPWAInstallUI() {
   if (isInStandaloneMode()) {
+    renderPWAInstallState("installed");
     return;
   }
 
   if (isIOS()) {
-    pwaBox.classList.add("show");
-    btnIOS.hidden = false;
-    pwaText.textContent = "No iPhone ou iPad, abra no Safari e adicione a DaVez à Tela de Início.";
+    renderPWAInstallState("ios");
+    const btnIOS = document.getElementById("btnInstalarIOS");
 
-    if (btnIOS.dataset.bound !== "true") {
+    if (btnIOS && btnIOS.dataset.bound !== "true") {
       btnIOS.dataset.bound = "true";
       btnIOS.addEventListener("click", () => {
-      showModal({
-        type: "info",
-        title: "Instalar no iPhone",
-        message: "Para instalar no iPhone:\n\n1. Abra este site no Safari\n2. Toque em Compartilhar\n3. Toque em 'Adicionar à Tela de Início'\n4. Confirme em 'Adicionar'"
-      });
+        showModal({
+          type: "info",
+          title: "Instalar no iPhone",
+          message: "Para instalar no iPhone ou iPad:\n\n1. Toque em Compartilhar\n2. Escolha 'Adicionar à Tela de Início'\n3. Confirme em 'Adicionar'\n\nSe essa opção não aparecer, abra a página no Safari e tente novamente."
+        });
       });
     }
+    return;
   }
+
+  renderPWAInstallState(deferredPrompt ? "available" : "manual");
 }
 
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();
   deferredPrompt = e;
 
-  const pwaBox = document.getElementById("pwaBox");
-  const btnInstall = document.getElementById("btnInstalarApp");
-
-  if (pwaBox && !isInStandaloneMode()) {
-    pwaBox.classList.add("show");
-  }
-  if (btnInstall) {
-    btnInstall.hidden = false;
+  if (!isInStandaloneMode()) {
+    renderPWAInstallState("available");
   }
 });
 
 document.addEventListener("DOMContentLoaded", () => {
+  applyTheme(document.documentElement.dataset.theme || "light");
+  document.querySelectorAll("[data-theme-option]").forEach((option) => {
+    option.addEventListener("click", () => {
+      applyTheme(option.dataset.themeOption, true);
+    });
+  });
+
+  const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  observeMediaQuery(systemThemeQuery, (event) => {
+    if (!readStoredTheme()) {
+      applyTheme(event.matches ? "dark" : "light");
+    }
+  });
+
   setupPWAInstallUI();
   updateConnectionState();
+
+  const standaloneModeQuery = window.matchMedia("(display-mode: standalone)");
+  observeMediaQuery(standaloneModeQuery, setupPWAInstallUI);
 
   const btnInstall = document.getElementById("btnInstalarApp");
   if (btnInstall) {
@@ -2513,19 +2856,31 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
+      const promptEvent = deferredPrompt;
+      deferredPrompt = null;
       btnInstall.disabled = true;
       btnInstall.setAttribute("aria-busy", "true");
 
-      await deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      deferredPrompt = null;
-      btnInstall.disabled = false;
-      btnInstall.removeAttribute("aria-busy");
+      try {
+        await promptEvent.prompt();
+        const choice = await promptEvent.userChoice;
 
-      if (choice.outcome === "accepted") {
-        btnInstall.hidden = true;
-      } else {
-        document.getElementById("pwaText").textContent = "A instalação foi cancelada. Você pode tentar novamente pelo menu do navegador.";
+        renderPWAInstallState(
+          choice.outcome === "accepted" ? "accepted" : "cancelled"
+        );
+      } catch (error) {
+        renderPWAInstallState(
+          "manual",
+          "A instalação automática não ficou disponível. Use o menu do navegador para adicionar à tela inicial."
+        );
+        showModal({
+          type: "err",
+          title: "Não foi possível instalar",
+          message: "Continue pelo navegador ou use a opção 'Adicionar à tela inicial' no menu."
+        });
+      } finally {
+        btnInstall.disabled = false;
+        btnInstall.removeAttribute("aria-busy");
       }
     });
   }
@@ -2559,10 +2914,20 @@ document.addEventListener("DOMContentLoaded", () => {
 window.addEventListener("online", updateConnectionState);
 window.addEventListener("offline", updateConnectionState);
 
+window.addEventListener("storage", (event) => {
+  if (event.key !== THEME_STORAGE_KEY) return;
+
+  const synchronizedTheme = event.newValue === "light" || event.newValue === "dark"
+    ? event.newValue
+    : window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  applyTheme(synchronizedTheme);
+});
+
 window.addEventListener("appinstalled", () => {
   deferredPrompt = null;
-  const pwaBox = document.getElementById("pwaBox");
-  if (pwaBox) pwaBox.classList.remove("show");
+  renderPWAInstallState("installed");
   setAppState("ready", "DaVez instalada no dispositivo.", false);
 });
 

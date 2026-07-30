@@ -12,17 +12,20 @@ diretamente em produção.
 
 ## Contrato derivado
 
-O código atual usa quatro tabelas:
+O código atual usa seis tabelas:
 
 | Tabela | Evidência no código | Responsabilidade |
 |---|---|---|
-| `settings` | `checkin.php`, `session_info.php`, `admin.php`, `DaVez/entrar.php` | token, janela da chamada e geolocalização base |
-| `checkins` | `checkin.php`, `relogin.php`, `admin.php`, `DaVez/entrar.php` | fila principal e encerramento de atendimentos |
+| `settings` | `checkin.php`, `admin.php`, `DaVez/entrar.php` | janela da chamada e geolocalização base; token legado permanece no schema |
+| `checkins` | `checkin.php`, `recover.php`, `admin.php` | fila principal, ciclo operacional e encerramento |
 | `fila_da_vez` | `DaVez/*.php`, `admin.php` | fila secundária do ciclo operacional |
 | `reports` | `admin.php` | snapshots de relatórios operacionais |
+| `admission_tickets` | `admin.php`, `checkin.php`, `recover.php` | tickets HMAC de check-in e recovery |
+| `public_sessions` | autenticação pública e logout | sessões opacas vinculadas a check-in |
 
-Não há evidência de uma relação por chave estrangeira entre essas tabelas.
-Por isso, nenhuma foreign key foi inventada.
+O rate limiter não usa MySQL. As migrations v2 adicionam relações explícitas
+entre check-ins, tickets, sessões e fila. As chaves estrangeiras usam
+`ON DELETE RESTRICT`.
 
 O registro inicial de `settings` nasce com a chamada fechada, token vazio e
 raio de 1 metro. Com a base ainda em `0,0`, esse default faz a geolocalização
@@ -51,10 +54,9 @@ Os endpoints capturam uma única referência temporal por request por meio de
 `OperationalContext`. Consultas de ciclo usam sempre o intervalo
 `[início, fim)`, sem `CURDATE()` e sem funções locais duplicadas.
 
-O ciclo de três dias do token legado usa a mesma referência temporal. A rotação
-ainda pode persistir estado durante `GET` em `session_info.php` para preservar o
-contrato do frontend atual. Isso é um gap conhecido: a identidade pública v2
-deve tornar esse endpoint estritamente de leitura.
+O fluxo público v2 não usa nem rotaciona o token coletivo. `session_info.php`
+é estritamente de leitura quanto aos dados de aplicação; ele apenas inicializa
+o contexto same-origin em cookie/sessão PHP.
 
 ## Migrations
 
@@ -64,11 +66,16 @@ As migrations são numeradas e devem ser aplicadas estritamente nesta ordem:
 2. `database/migrations/002_create_checkins.sql`
 3. `database/migrations/003_create_fila_da_vez.sql`
 4. `database/migrations/004_create_reports.sql`
+5. `database/migrations/005_add_checkins_operational_date.sql`
+6. `database/migrations/006_create_admission_tickets.sql`
+7. `database/migrations/007_create_public_sessions.sql`
+8. `database/migrations/008_link_queue_to_checkins.sql`
 
-Cada migration usa `CREATE TABLE IF NOT EXISTS`. Isso torna a reaplicação
-inofensiva em uma instalação nova já criada, mas **não transforma uma tabela
-legada incompatível**. Se uma tabela com o mesmo nome já existir, o MySQL não
-compara nem corrige sua estrutura.
+As migrations `001` a `004`, `006` e `007` usam
+`CREATE TABLE IF NOT EXISTS`. Isso não valida uma tabela incompatível com o
+mesmo nome. As migrations `005` e `008` usam `ALTER TABLE`, devem ser executadas
+exatamente uma vez e exigem preflight que confirme a ausência das novas
+colunas, chaves e constraints.
 
 `database/schema.sql` reúne o mesmo contrato e deve ser usado apenas para criar
 um banco vazio em ambiente local ou de staging descartável.
@@ -79,7 +86,7 @@ Use uma conta somente leitura e exporte apenas metadados, nunca dados. Antes de
 qualquer migration, registre:
 
 ```sql
-SELECT VERSION();
+SELECT VERSION(), @@sql_mode, @@time_zone;
 
 SELECT
     TABLE_NAME,
@@ -87,7 +94,14 @@ SELECT
     TABLE_COLLATION
 FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = DATABASE()
-  AND TABLE_NAME IN ('settings', 'checkins', 'fila_da_vez', 'reports');
+  AND TABLE_NAME IN (
+    'settings',
+    'checkins',
+    'fila_da_vez',
+    'reports',
+    'admission_tickets',
+    'public_sessions'
+  );
 
 SELECT
     TABLE_NAME,
@@ -98,7 +112,14 @@ SELECT
     EXTRA
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
-  AND TABLE_NAME IN ('settings', 'checkins', 'fila_da_vez', 'reports')
+  AND TABLE_NAME IN (
+    'settings',
+    'checkins',
+    'fila_da_vez',
+    'reports',
+    'admission_tickets',
+    'public_sessions'
+  )
 ORDER BY TABLE_NAME, ORDINAL_POSITION;
 
 SELECT
@@ -109,7 +130,14 @@ SELECT
     COLUMN_NAME
 FROM information_schema.STATISTICS
 WHERE TABLE_SCHEMA = DATABASE()
-  AND TABLE_NAME IN ('settings', 'checkins', 'fila_da_vez', 'reports')
+  AND TABLE_NAME IN (
+    'settings',
+    'checkins',
+    'fila_da_vez',
+    'reports',
+    'admission_tickets',
+    'public_sessions'
+  )
 ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX;
 ```
 
@@ -117,13 +145,39 @@ Depois:
 
 1. compare os metadados com `database/schema.sql`;
 2. classifique cada diferença como compatível, conversível ou bloqueadora;
-3. verifique a versão real do MySQL/MariaDB e o suporte a `CHECK`;
-4. crie uma migration de upgrade específica, sem sobrescrever as migrations
-   de instalação nova;
-5. faça backup;
-6. restaure o backup em banco descartável;
-7. aplique e teste a migration nesse clone;
-8. só então planeje uma janela controlada para o ambiente real.
+3. confirme `checkins.id` e `fila_da_vez.id` como `BIGINT UNSIGNED`,
+   `fila_da_vez.dia` como `DATE` e todas as tabelas envolvidas como InnoDB;
+4. verifique a versão real do MySQL/MariaDB e o enforcement de `CHECK`;
+5. confirme que os nomes de coluna, índice e constraint das migrations
+   `005..008` ainda não existem;
+6. não faça backfill de `operational_date` até confirmar timezone e semântica
+   dos `DATETIME` legados;
+7. meça lock e reconstrução dos dois `ALTER TABLE` em clone descartável;
+8. faça backup e restaure-o em ambiente descartável;
+9. aplique `005..008` na ordem e execute testes de integração;
+10. só então planeje uma janela controlada para o ambiente real.
+
+## Identidade pública v2 no banco
+
+`admission_tickets.ticket_hash` armazena somente HMAC-SHA-256 binário. O ticket
+bruto não pertence ao banco. O prazo é fixado em dez minutos e o consumo deve
+ser uma atualização condicional dentro da mesma transação que cria ou recupera
+o check-in e cria a sessão.
+
+`public_sessions.token_hash` armazena somente SHA-256 binário de token aleatório
+com pelo menos 32 bytes. A chave única `(checkin_id, active_slot)` permite uma
+única sessão atual. Ao revogar, substituir ou encerrar uma sessão, a aplicação
+deve preencher `revoked_at`, `revocation_reason` e definir
+`active_slot=NULL` na mesma transação.
+
+As foreign keys compostas garantem que ticket, sessão e item da fila apontem
+para o mesmo `checkin_id` e `operational_date`. Registros legados podem manter
+`checkins.operational_date` e `fila_da_vez.checkin_id` nulos.
+
+As referências usam `ON DELETE RESTRICT`. Antes de apagar um `checkin`, o fluxo
+v2 deve revogar e remover, conforme a política de retenção aprovada, sessões,
+tickets e itens da fila associados. A limpeza atual não pode operar sobre
+check-ins v2 enquanto esse tratamento transacional não estiver implementado.
 
 ## Aplicação em ambiente descartável
 
@@ -211,34 +265,39 @@ O fluxo administrativo de relatório, limpeza do ciclo e fechamento da chamada
 Endpoints HTTP não executam DDL nem introspecção de schema. Schema e migrations
 devem ser preparados fora do caminho de request.
 
-## Geofence e identificadores legados
+## Geofence e identidade pública
 
 `src/Domain/Geofence.php` é a única implementação de distância e usa Haversine.
 Base `0,0` ou raio menor ou igual a zero falham de forma fechada. Os dois fluxos
 de entrada usam o mesmo helper.
 
-O código curto e o `client_id` legados mantêm seus formatos, mas agora são
-gerados por `random_int` e `random_bytes`. Eles continuam sendo compatibilidade
-temporária, não uma identidade autenticável; a substituição definitiva está em
-`docs/PUBLIC_IDENTITY_V2.md`.
+O fluxo v2 usa ticket Crockford Base32 de uso único, HMAC no banco e sessão
+opaca armazenada somente como hash. `client_id` permanece nullable no schema
+para dados legados, mas não é aceito como identidade pelo check-in ou pela fila
+v2. Consulte `docs/PUBLIC_IDENTITY_V2.md`.
 
-## Rollback
+## Forward rollback
 
-Não existe um rollback genérico com `DROP TABLE`. Essa operação seria insegura:
+Não existe um rollback destrutivo genérico. Essa operação seria insegura:
 uma migration idempotente pode encontrar e reutilizar uma tabela legada, e um
 arquivo `down.sql` não conseguiria distinguir dados antigos de dados criados
 pela instalação.
 
-Plano obrigatório:
+Plano obrigatório antes de existirem dados v2:
 
 1. tirar backup consistente antes de qualquer DDL;
 2. registrar checksum, horário e versão do backup;
 3. restaurar em ambiente descartável;
 4. validar contagens e fluxos essenciais no restore;
 5. aplicar a migration;
-6. se a validação falhar, interromper a aplicação;
-7. restaurar o backup verificado;
-8. registrar a ocorrência e reconciliar escritas realizadas durante a janela.
+6. se a validação falhar, interromper a ativação da identidade v2;
+7. retornar a aplicação à versão anterior mantendo o schema aditivo;
+8. restaurar o backup somente se a falha de DDL exigir;
+9. registrar a ocorrência e reconciliar escritas realizadas durante a janela.
+
+Depois que tickets ou sessões forem emitidos, o rollback deve interromper novas
+emissões, revogar credenciais ativas e preservar as tabelas para auditoria. Não
+é seguro reativar automaticamente o token coletivo ou o relogin por nome.
 
 Para instalações descartáveis sem dados, o rollback pode ser recriar o banco
 por completo. Essa decisão não se aplica automaticamente a staging persistente
@@ -261,7 +320,7 @@ Não armazene dumps no repositório.
 
 ## Dados sensíveis e retenção
 
-O contrato legado exige campos que podem conter dados pessoais:
+O contrato contém campos que podem conter dados pessoais:
 
 - `checkins.nome`;
 - `checkins.client_id`;
@@ -269,10 +328,10 @@ O contrato legado exige campos que podem conter dados pessoais:
 - `checkins.user_agent`;
 - `reports.payload_json`.
 
-O schema preserva esses campos porque o código os utiliza; isso não autoriza
-retenção indefinida. Antes de produção, defina finalidade, acesso, retenção,
-anonimização e descarte para cada campo. `payload_json` pode duplicar dados da
-fila e exige o mesmo ou maior rigor.
+O check-in v2 não grava IP nem User-Agent; as colunas permanecem nullable para
+compatibilidade com registros legados. Isso não autoriza retenção indefinida.
+Antes de produção, defina finalidade, acesso, retenção, anonimização e descarte.
+`payload_json` pode duplicar dados da fila e exige o mesmo ou maior rigor.
 
 ## Incertezas explícitas
 
@@ -283,10 +342,11 @@ fila e exige o mesmo ou maior rigor.
 - O comportamento de `CHECK` depende da versão do MySQL/MariaDB.
 - A regra de unicidade de nomes não está formalizada.
 - `client_id` pode ser nulo em inserções manuais.
-- A fila principal não persiste a data operacional em coluna própria; portanto,
-  não foi criada uma constraint única por ciclo.
-- Não há evidência suficiente para criar foreign keys.
-- Não há evidência suficiente para definir política de exclusão em cascata.
+- `checkins.operational_date` permanece nulo para registros legados até existir
+  uma estratégia de backfill validada.
+- As foreign keys v2 usam exclusão restrita; o fluxo de limpeza precisa tratar
+  as dependências antes do corte.
+- O suporte às expressões de data usadas nos `CHECK` depende da versão real.
 - Não há teste de concorrência contra um MySQL real.
 
 ## Validação sem banco
@@ -303,6 +363,7 @@ php tests/domain/report_snapshot_test.php
 php tests/database/atomic_order_allocator_test.php
 php tests/database/settings_token_cycle_cas_policy_test.php
 php tests/database/queue_exit_compaction_policy_test.php
+php tests/database/identity_v2_schema_contract_test.php
 php tests/database/runtime_data_policy_test.php
 php tests/database/schema_contract_test.php
 ```

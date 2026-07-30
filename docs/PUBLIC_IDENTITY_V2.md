@@ -2,12 +2,13 @@
 
 ## Status
 
-> **PLANEJADO — NÃO IMPLEMENTADO**
+> **APROVADO — IMPLEMENTAÇÃO EM ANDAMENTO**
 >
-> Este documento é uma proposta técnica. Nenhuma tabela, migration, rota,
-> sessão, cookie, tela ou regra descrita aqui deve ser considerada existente.
-> A implementação está bloqueada pelas decisões do proprietário listadas ao
-> final e exige um lote separado, backup, testes e corte controlado.
+> O proprietário aprovou em 2026-07-29 o pacote recomendado
+> DEC-PID2-01 a DEC-PID2-10. A aprovação desbloqueia o desenvolvimento, mas
+> não autoriza executar migrations, realizar o corte, deploy ou mudança em
+> produção. Cada item somente deve ser considerado implementado depois dos
+> testes correspondentes.
 
 ## Veredito
 
@@ -52,7 +53,7 @@ Consequências:
 
 ## Propriedades obrigatórias
 
-| ID | Propriedade planejada |
+| ID | Propriedade implementada localmente |
 |---|---|
 | PID2-01 | Nenhum ID vindo do frontend será fonte de autenticação ou autorização. |
 | PID2-02 | Cada admissão usará ticket individual, de uso único e com expiração. |
@@ -75,11 +76,11 @@ O administrador emitirá um ticket para uma finalidade específica:
 - `recovery`: autoriza recuperar um check-in já identificado pelo
   administrador.
 
-Características planejadas:
+Características implementadas:
 
-- código Base32 individual com entropia adequada ou QR individual com token
-  aleatório;
-- validade sugerida de 5 a 10 minutos;
+- código Crockford Base32 individual de 16 caracteres, digitável; QR individual
+  pode transportar o mesmo código em etapa posterior;
+- validade exata de 10 minutos;
 - consumo único e atômico;
 - rate limiting por rede e contexto;
 - revogação administrativa;
@@ -94,7 +95,7 @@ coletivo e não atende a esta arquitetura.
 Depois de consumir um ticket de check-in, o backend criará uma sessão vinculada
 ao check-in daquele ciclo.
 
-Cookie planejado para produção:
+Cookie implementado para produção:
 
 ```text
 Nome: __Host-davez_public
@@ -112,13 +113,14 @@ identificador visual.
 A sessão prova a posse do dispositivo autorizado no ciclo. Ela não representa
 identidade civil permanente e não deve ser descrita como conta de usuário.
 
-### Modelo de dados futuro
+### Modelo de dados implementado no lote local
 
-As estruturas abaixo são propostas, não migrations prontas.
+As estruturas abaixo constam de `database/schema.sql` e das migrations aditivas
+`005..008`. Elas ainda não foram executadas ou validadas em MySQL real.
 
-#### `public_access_tickets`
+#### `admission_tickets`
 
-| Campo proposto | Finalidade |
+| Campo | Finalidade |
 |---|---|
 | `id` | Identificador interno |
 | `ticket_hash` | HMAC do código individual |
@@ -132,7 +134,7 @@ As estruturas abaixo são propostas, não migrations prontas.
 
 #### `public_sessions`
 
-| Campo proposto | Finalidade |
+| Campo | Finalidade |
 |---|---|
 | `id` | Identificador interno |
 | `checkin_id` | Identidade operacional derivada no backend |
@@ -145,11 +147,11 @@ As estruturas abaixo são propostas, não migrations prontas.
 
 #### Evolução de `fila_da_vez`
 
-Adicionar futuramente `checkin_id` e criar unicidade por
-`(dia, checkin_id)`. O `client_id` legado deve permanecer apenas durante a
-transição e nunca poderá autenticar uma sessão.
+O lote adiciona `checkin_id` nullable e unicidade por `(dia, checkin_id)`.
+O `client_id` legado permanece nullable apenas para compatibilidade de schema e
+nunca autentica uma sessão.
 
-## Fluxos planejados
+## Fluxos implementados localmente
 
 ### Primeiro check-in no dispositivo
 
@@ -207,7 +209,7 @@ Sessão pública válida + CSRF + localização
 Nome, token, `client_id`, papel ou permissão enviados pelo frontend serão
 rejeitados.
 
-## Impacto planejado por arquivo
+## Impacto implementado por arquivo
 
 ### `index.html`
 
@@ -243,15 +245,14 @@ rejeitados.
 - validar o cookie opaco;
 - não gerar ou rotacionar token operacional;
 - não retornar token de sessão, `client_id` ou ID do banco;
-- retornar a versão de identidade, estado autenticado, CSRF e visão `me`.
+- retornar a versão de identidade, estado autenticado e visão `me`.
 
-Exemplo conceitual, não implementado:
+Forma resumida da resposta implementada:
 
 ```json
 {
   "identity_version": 2,
   "authenticated": true,
-  "csrf_token": "valor-efemero",
   "operational_date": "AAAA-MM-DD",
   "me": {
     "status": "na_fila",
@@ -290,19 +291,18 @@ Exemplo conceitual, não implementado:
 - mostrar validade e estado sem revelar código ou cookie;
 - registrar auditoria sanitizada das ações.
 
-## Migrations futuras propostas
+## Migrations aditivas preparadas
 
-Nenhuma migration deve ser executada a partir deste documento.
+Nenhuma migration foi executada por este lote. A ordem preparada é:
 
-Ordem sugerida para um lote posterior:
+1. `005_add_checkins_operational_date.sql`;
+2. `006_create_admission_tickets.sql`;
+3. `007_create_public_sessions.sql`;
+4. `008_link_queue_to_checkins.sql`.
 
-1. criar `public_access_tickets`;
-2. criar `public_sessions`;
-3. adicionar `fila_da_vez.checkin_id` nullable;
-4. adicionar índices e chaves estrangeiras;
-5. adicionar a nova unicidade somente após validar os dados;
-6. preservar colunas legadas durante a janela de migração;
-7. remover `client_id` e token coletivo apenas em migration posterior.
+As colunas legadas permanecem para compatibilidade de schema, mas não
+autenticam o fluxo v2. Aplicação, backfill, validação e rollback devem seguir
+`docs/DATABASE_OPERATIONS.md` em um MySQL isolado.
 
 Backfill de `checkin_id` serve para consistência, não para autenticação.
 Associações ambíguas devem ser encaminhadas para revisão em vez de inferidas.
@@ -334,19 +334,19 @@ atualização. O cache da PWA precisa ser versionado no mesmo corte.
 
 ## Expiração e revogação
 
-Padrão proposto:
+Padrão aprovado e implementado localmente:
 
-- ticket válido por 5–10 minutos;
+- ticket válido por 10 minutos;
 - ticket de uso único;
-- sessão válida até o fim do ciclo, com pequena tolerância;
-- limite absoluto máximo sugerido de 24 horas;
+- sessão válida até o fim do ciclo;
+- limite absoluto máximo de 24 horas;
 - logout revoga no servidor;
 - recuperação revoga sessões anteriores;
 - limpeza do ciclo revoga sessões associadas;
 - suspeita de abuso permite revogação administrativa;
 - token da sessão é rotacionado depois de check-in e recuperação.
 
-O tempo definitivo depende de decisão do proprietário.
+Esses tempos foram aprovados pelo proprietário em 2026-07-29.
 
 ## Privacidade
 
@@ -400,25 +400,24 @@ O tempo definitivo depende de decisão do proprietário.
 - código ativo não consulta `settings.token`;
 - endpoints HTTP não executam DDL.
 
-## Decisões bloqueantes do proprietário
+## Decisões aprovadas pelo proprietário
 
-| ID | Decisão necessária | Recomendação padrão |
-|---|---|---|
-| DEC-PID2-01 | Recuperação será apenas administrativa? | Sim, presencial, até existir conta/OTP/passkey. |
-| DEC-PID2-02 | Quantos dispositivos ativos por check-in? | Um; recovery revoga o anterior. |
-| DEC-PID2-03 | Ticket digitável ou QR? | QR individual quando operacionalmente possível; código individual como fallback. |
-| DEC-PID2-04 | Corte no início do ciclo ou transição dual? | Corte no início do ciclo. |
-| DEC-PID2-05 | A fila pública precisa mostrar todos os nomes? | Não; retornar apenas próximo e visão `me`. |
-| DEC-PID2-06 | Validade definitiva da sessão? | Até o fim do ciclo, máximo de 24 horas. |
-| DEC-PID2-07 | Validade definitiva do ticket? | 10 minutos e uso único. |
-| DEC-PID2-08 | IP e User-Agent continuarão armazenados? | Remover, salvo justificativa e retenção aprovadas. |
-| DEC-PID2-09 | HTTPS está garantido em todos os ambientes reais? | Tornar obrigatório antes da ativação. |
-| DEC-PID2-10 | O processo suporta emitir ticket individual? | Validar operação antes do desenvolvimento. |
+| ID | Decisão aprovada |
+|---|---|
+| DEC-PID2-01 | Recuperação exclusivamente administrativa e presencial até existir conta, OTP ou passkey. |
+| DEC-PID2-02 | Uma sessão ativa por check-in; recovery revoga a anterior. |
+| DEC-PID2-03 | QR individual, com código individual digitável como fallback. |
+| DEC-PID2-04 | Corte completo no início de um ciclo operacional. |
+| DEC-PID2-05 | Fila pública mostra somente o próximo chamado e a visão autenticada `me`. |
+| DEC-PID2-06 | Sessão válida até o fim do ciclo, limitada a 24 horas. |
+| DEC-PID2-07 | Ticket válido por 10 minutos e de uso único. |
+| DEC-PID2-08 | IP e User-Agent não serão persistidos no check-in v2. |
+| DEC-PID2-09 | HTTPS obrigatório em staging e produção; HTTP permitido somente em localhost. |
+| DEC-PID2-10 | Emissão administrativa de ticket individual, iniciando por piloto operacional. |
 
-## Recomendação padrão
+## Pacote técnico aprovado
 
-Se o proprietário não escolher uma alternativa mais forte, o plano deve seguir
-estes padrões:
+O desenvolvimento deve seguir estes padrões:
 
 - um ticket individual presencial por admissão;
 - uma sessão ativa por check-in;
@@ -432,11 +431,12 @@ estes padrões:
 - HTTPS obrigatório;
 - nenhum uso autenticador de `client_id`.
 
-## Critério para desbloquear implementação
+## Critério para desbloquear ativação
 
-A implementação somente poderá começar quando:
+A implementação local foi iniciada porque o item 1 foi concluído. Ativação,
+migration e corte continuam condicionados aos itens 2 a 6:
 
-1. DEC-PID2-01 a DEC-PID2-10 estiverem decididas;
+1. **Concluído:** DEC-PID2-01 a DEC-PID2-10 aprovadas em 2026-07-29;
 2. o processo de distribuição de tickets tiver responsável definido;
 3. HTTPS, secrets e storage de sessão estiverem disponíveis;
 4. backup, restore e rollback das migrations estiverem documentados;

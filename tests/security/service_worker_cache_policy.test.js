@@ -17,7 +17,7 @@ function request(path, options = {}) {
   };
 }
 
-assert.equal(CACHE_NAME, "motoboys-static-v3");
+assert.equal(CACHE_NAME, "motoboys-static-v6");
 
 for (const assetPath of STATIC_ASSET_PATHS) {
   assert.equal(
@@ -34,17 +34,41 @@ assert.equal(
 );
 
 assert.equal(
-  classifyRequest(request("./qualquer-rota", { mode: "navigate" }), scopeUrl),
+  classifyRequest(request("./index.html", { mode: "navigate" }), scopeUrl),
   REQUEST_STRATEGY.NETWORK_FIRST_NAVIGATION,
-  "navegação deve usar rede com fallback offline"
+  "home pública deve usar rede com fallback offline"
+);
+
+for (const privateNavigation of ["./admin.php", "./fila", "./rota-inexistente"]) {
+  assert.equal(
+    classifyRequest(request(privateNavigation, { mode: "navigate" }), scopeUrl),
+    REQUEST_STRATEGY.NETWORK_ONLY,
+    `${privateNavigation} não pode receber a home pública como fallback offline`
+  );
+}
+
+assert.equal(
+  classifyRequest(
+    {
+      method: "GET",
+      mode: "navigate",
+      url: "https://outside.example.test/app/index.html",
+    },
+    scopeUrl
+  ),
+  REQUEST_STRATEGY.NETWORK_ONLY,
+  "navegação de outra origem não pode ser interceptada"
 );
 
 for (const dynamicPath of [
   "./checkin.php",
+  "./recover.php",
+  "./public_logout.php",
   "./relogin.php",
   "./session_info.php",
   "./admin.php",
   "./DaVez/listar.php",
+  "./DaVez/listar_admin.php",
   "./DaVez/entrar.php",
   "./logs/checkin.log",
   "./reports/relatorio.html",
@@ -88,12 +112,16 @@ async function testFetchEventBoundary() {
   const cachedResponse = { source: "cache" };
   const deletedCaches = [];
   let clientsClaimed = false;
+  let skipWaitingCalls = 0;
 
   global.caches = {
     keys: async () => [
       "motoboys-pwa-v1",
       "motoboys-static-v2",
       "motoboys-static-v3",
+      "motoboys-static-v4",
+      "motoboys-static-v5",
+      "motoboys-static-v6",
       "cache-de-outra-aplicacao",
     ],
     delete: async cacheName => {
@@ -101,6 +129,7 @@ async function testFetchEventBoundary() {
       return true;
     },
     open: async () => ({
+      addAll: async () => {},
       match: async () => cachedResponse,
       put: async () => {},
     }),
@@ -120,13 +149,42 @@ async function testFetchEventBoundary() {
         clientsClaimed = true;
       },
     },
-    skipWaiting: async () => {},
+    skipWaiting: async () => {
+      skipWaitingCalls += 1;
+    },
     addEventListener(type, handler) {
       listeners[type] = handler;
     },
   };
 
   registerServiceWorkerEvents(fakeServiceWorkerScope);
+
+  let installation;
+  listeners.install({
+    waitUntil(promise) {
+      installation = promise;
+    },
+  });
+  await installation;
+  assert.equal(
+    skipWaitingCalls,
+    0,
+    "instalação não deve trocar o worker sem confirmação do usuário"
+  );
+
+  let messageUpdate;
+  listeners.message({
+    data: { action: "skipWaiting" },
+    waitUntil(promise) {
+      messageUpdate = promise;
+    },
+  });
+  await messageUpdate;
+  assert.equal(
+    skipWaitingCalls,
+    1,
+    "confirmação do usuário deve liberar o worker em espera"
+  );
 
   let activation;
   listeners.activate({
@@ -137,7 +195,13 @@ async function testFetchEventBoundary() {
   await activation;
   assert.deepEqual(
     deletedCaches,
-    ["motoboys-pwa-v1", "motoboys-static-v2"],
+    [
+      "motoboys-pwa-v1",
+      "motoboys-static-v2",
+      "motoboys-static-v3",
+      "motoboys-static-v4",
+      "motoboys-static-v5",
+    ],
     "a ativação deve remover o cache antigo sem apagar caches alheios"
   );
   assert.equal(
@@ -174,7 +238,7 @@ async function testFetchEventBoundary() {
 
   let navigationResponse;
   listeners.fetch({
-    request: request("./fila", { mode: "navigate" }),
+    request: request("./index.html", { mode: "navigate" }),
     respondWith(response) {
       navigationResponse = response;
     },
@@ -191,7 +255,7 @@ async function testFetchEventBoundary() {
 
   let offlineNavigationResponse;
   listeners.fetch({
-    request: request("./fila", { mode: "navigate" }),
+    request: request("./index.html", { mode: "navigate" }),
     respondWith(response) {
       offlineNavigationResponse = response;
     },

@@ -30,6 +30,8 @@ $releaseFiles = @(
     'log.php',
     'manifest.json',
     'panel.php',
+    'public_logout.php',
+    'recover.php',
     'relogin.php',
     'service-worker.js',
     'session_info.php'

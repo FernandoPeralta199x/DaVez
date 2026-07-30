@@ -7,9 +7,12 @@ $endpoints = [
     'admin.php',
     'checkin.php',
     'relogin.php',
+    'recover.php',
+    'public_logout.php',
     'session_info.php',
     'DaVez/entrar.php',
     'DaVez/listar.php',
+    'DaVez/listar_admin.php',
     'DaVez/reordenar.php',
     'DaVez/sair.php',
 ];

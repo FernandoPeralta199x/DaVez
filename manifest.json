@@ -8,7 +8,7 @@
   "display": "standalone",
   "background_color": "#f4f6fa",
   "theme_color": "#f4f6fa",
-  "orientation": "portrait",
+  "orientation": "any",
   "lang": "pt-BR",
   "categories": ["business", "productivity"],
   "prefer_related_applications": false,
@@ -20,8 +20,8 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-512.png",
-      "sizes": "592x592",
+      "src": "/icons/icon-512-v2.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }

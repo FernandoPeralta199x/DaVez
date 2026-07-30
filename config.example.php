@@ -11,6 +11,7 @@ $requiredEnvironmentVariables = [
     'ADMIN_PASSWORD_HASH',
     'APP_RATE_LIMIT_DIR',
     'APP_RATE_LIMIT_SECRET',
+    'PUBLIC_TICKET_HMAC_KEY',
 ];
 
 foreach ($requiredEnvironmentVariables as $variableName) {
@@ -22,6 +23,18 @@ foreach ($requiredEnvironmentVariables as $variableName) {
         );
     }
 }
+
+$publicTicketHmacKey = getenv('PUBLIC_TICKET_HMAC_KEY');
+
+if (
+    $publicTicketHmacKey === false
+    || strlen($publicTicketHmacKey) < 32
+) {
+    throw new RuntimeException(
+        'PUBLIC_TICKET_HMAC_KEY deve possuir ao menos 32 bytes.'
+    );
+}
+unset($publicTicketHmacKey);
 
 $db_host = getenv('DB_HOST');
 $db_name = getenv('DB_NAME');

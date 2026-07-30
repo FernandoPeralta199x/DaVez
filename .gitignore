@@ -10,6 +10,7 @@
 /CLAUDE_DAVEZ_AUDITORIA_E_PLANO_CORRECAO-1.md
 
 # Dados gerados em runtime
+/.runtime/
 /logs/*
 !/logs/.gitkeep
 /reports/*

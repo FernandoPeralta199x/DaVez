@@ -24,9 +24,12 @@ const admin = read("admin.php");
 const configExample = read("config.example.php");
 const checkin = read("checkin.php");
 const relogin = read("relogin.php");
+const recover = read("recover.php");
+const publicLogout = read("public_logout.php");
 const sessionInfo = read("session_info.php");
 const enterQueue = read(path.join("DaVez", "entrar.php"));
 const listQueue = read(path.join("DaVez", "listar.php"));
+const adminListQueue = read(path.join("DaVez", "listar_admin.php"));
 const reorderQueue = read(path.join("DaVez", "reordenar.php"));
 const exitQueue = read(path.join("DaVez", "sair.php"));
 
@@ -50,9 +53,12 @@ for (const [file, source] of [
   ["admin.php", admin],
   ["checkin.php", checkin],
   ["relogin.php", relogin],
+  ["recover.php", recover],
+  ["public_logout.php", publicLogout],
   ["session_info.php", sessionInfo],
   ["DaVez/entrar.php", enterQueue],
   ["DaVez/listar.php", listQueue],
+  ["DaVez/listar_admin.php", adminListQueue],
   ["DaVez/reordenar.php", reorderQueue],
   ["DaVez/sair.php", exitQueue],
 ]) {
@@ -101,7 +107,8 @@ forbidPattern(
 
 for (const [file, source] of [
   ["checkin.php", checkin],
-  ["relogin.php", relogin],
+  ["recover.php", recover],
+  ["public_logout.php", publicLogout],
   ["DaVez/entrar.php", enterQueue],
 ]) {
   requirePattern(
@@ -115,6 +122,12 @@ for (const [file, source] of [
     `${file} não aplica rate limiting.`
   );
 }
+
+requirePattern(
+  relogin,
+  /legacy_relogin_disabled[\s\S]*\b410\b/,
+  "relogin.php não encerra explicitamente o fluxo legado."
+);
 
 requirePattern(
   sessionInfo,
@@ -144,9 +157,25 @@ for (const [file, source] of [
 }
 
 requirePattern(
+  adminListQueue,
+  /davez_require_http_method\('GET'\)/,
+  "DaVez/listar_admin.php não restringe leitura a GET."
+);
+requirePattern(
+  adminListQueue,
+  /davez_require_admin\(\)/,
+  "DaVez/listar_admin.php não exige sessão administrativa."
+);
+
+requirePattern(
   listQueue,
   /davez_require_http_method\('GET'\)/,
   "DaVez/listar.php não restringe leitura a GET."
+);
+forbidPattern(
+  listQueue,
+  /["']fila["']\s*=>|client_id/,
+  "DaVez/listar.php ainda expõe a fila administrativa."
 );
 
 process.stdout.write("endpoint_security_policy: OK\n");

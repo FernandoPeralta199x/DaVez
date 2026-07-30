@@ -1,377 +1,369 @@
 <?php
+
+declare(strict_types=1);
+
 require_once __DIR__ . '/src/Security/Bootstrap.php';
 require_once __DIR__ . '/src/Domain/OperationalCycle.php';
 require_once __DIR__ . '/src/Domain/OperationalContext.php';
 require_once __DIR__ . '/src/Domain/Geofence.php';
 require_once __DIR__ . '/src/Database/bootstrap.php';
+require_once __DIR__ . '/src/Http/PublicIdentityView.php';
+
 davez_install_safe_exception_handler();
 
-// ===== Warm-up para InfinityFree (GET) =====
-// Quando o provedor aplica challenge, ele costuma redirecionar para GET.
-// Então: se não for POST, devolve uma página que volta pro index.
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
-  header('Content-Type: text/html; charset=utf-8');
-  $back = 'index.html?warm=1';
-  echo "<!doctype html><html><head><meta charset='utf-8'>
-  <meta http-equiv='refresh' content='0;url={$back}'>
-  <script>location.replace('{$back}');</script>
-  </head><body>OK</body></html>";
-  exit;
+    header('Location: index.html?warm=1', true, 303);
+    exit;
 }
 
 davez_require_http_method('POST');
 davez_require_public_request_context();
 
+if (isset($_POST['token']) || isset($_POST['client_id'])) {
+    davez_send_error(
+        'identity_upgrade_required',
+        'Atualize o aplicativo para utilizar um código individual.',
+        426
+    );
+}
+
 try {
-  davez_assert_allowed_input_keys(
-    $_POST,
-    ['nome', 'token', 'lat', 'lng', 'client_id']
-  );
-  $checkinRate = davez_rate_limit_consume(
-    'public-checkin',
-    davez_rate_limit_request_subject(),
-    10,
-    60
-  );
+    davez_assert_allowed_input_keys(
+        $_POST,
+        ['nome', 'access_code', 'lat', 'lng']
+    );
+    $checkinRate = davez_rate_limit_consume(
+        'public-checkin-v2',
+        davez_rate_limit_request_subject(),
+        5,
+        60
+    );
 } catch (InvalidArgumentException $exception) {
-  davez_send_error(
-    'invalid_request',
-    'Dados de check-in inválidos.',
-    400
-  );
+    davez_send_error(
+        'invalid_request',
+        'Dados de check-in inválidos.',
+        400
+    );
 } catch (RuntimeException $exception) {
-  davez_send_error(
-    'security_control_unavailable',
-    'Serviço temporariamente indisponível.',
-    503
-  );
+    davez_send_error(
+        'security_control_unavailable',
+        'Serviço temporariamente indisponível.',
+        503
+    );
 }
 
 if (!$checkinRate['allowed']) {
-  header('Retry-After: ' . $checkinRate['retry_after']);
-  davez_send_error(
-    'rate_limit_exceeded',
-    'Muitas tentativas. Aguarde e tente novamente.',
-    429
-  );
+    header('Retry-After: ' . $checkinRate['retry_after']);
+    davez_send_error(
+        'rate_limit_exceeded',
+        'Muitas tentativas. Aguarde e tente novamente.',
+        429
+    );
 }
 
-include "config.php";
-include "log.php";
+include __DIR__ . '/config.php';
+include __DIR__ . '/log.php';
 
-@date_default_timezone_set('America/Sao_Paulo');
+date_default_timezone_set('America/Sao_Paulo');
 $conn->query("SET time_zone = '-03:00'");
 $operationalContext = new \DaVez\Domain\OperationalContext(
-  new \DaVez\Domain\OperationalCycle()
+    new \DaVez\Domain\OperationalCycle()
 );
 $operationalStart = $operationalContext->startSql();
 $operationalEnd = $operationalContext->endSql();
 $operationalDate = $operationalContext->date();
-
-header('Content-Type: text/plain; charset=utf-8');
-
-error_reporting(E_ALL);
-ini_set('display_errors', 0);
-
-register_shutdown_function(function () {
-  $err = error_get_last();
-  if ($err) {
-    include_once __DIR__ . "/log.php";
-    log_event("FATAL_SHUTDOWN", [
-      "error_type" => $err["type"] ?? null,
-      "error_line" => $err["line"] ?? null,
-    ]);
-  }
-});
-
-log_event("CHECKIN_START");
+$now = $operationalContext->reference();
 
 try {
-  $nome = davez_input_string($_POST, 'nome', 2, 80);
-  $token = davez_input_string($_POST, 'token', 1, 32);
-  $lat = davez_input_float($_POST, 'lat', -90, 90);
-  $lng = davez_input_float($_POST, 'lng', -180, 180);
+    $name = davez_input_string($_POST, 'nome', 2, 80);
+    $accessCode = davez_input_string(
+        $_POST,
+        'access_code',
+        16,
+        19
+    );
+    $latitude = davez_input_float($_POST, 'lat', -90, 90);
+    $longitude = davez_input_float($_POST, 'lng', -180, 180);
+    $ticketHash = davez_public_ticket_hash($accessCode);
+    $sessionToken = davez_public_session_token();
+    $sessionHash = davez_public_session_hash($sessionToken);
+    $sessionExpiresAt = davez_public_session_expires_at(
+        $operationalContext,
+        $now
+    );
+    davez_public_identity_cookie_name();
 } catch (InvalidArgumentException $exception) {
-  log_event("ERRO_NOME_VAZIO");
-  davez_send_error(
-    'invalid_checkin_data',
-    'Confira nome, token e localização.',
-    400
-  );
+    davez_send_error(
+        'invalid_checkin_data',
+        'Confira nome, código individual e localização.',
+        400
+    );
+} catch (RuntimeException $exception) {
+    davez_send_error(
+        'identity_service_unavailable',
+        'Identidade pública temporariamente indisponível.',
+        503
+    );
 }
 
-$clientId = is_string($_POST['client_id'] ?? null)
-  ? trim($_POST['client_id'])
-  : (is_string($_COOKIE['cid'] ?? null) ? $_COOKIE['cid'] : '');
+$settingsResult = $conn->query(
+    'SELECT chamada_aberta, lat_base, lng_base, raio
+     FROM settings
+     WHERE id=1
+     LIMIT 1'
+);
+$settings = $settingsResult ? $settingsResult->fetch_assoc() : null;
 
-$sRes = $conn->query("SELECT * FROM settings WHERE id=1");
-if (!$sRes) {
-  log_event("ERRO_SETTINGS_QUERY");
-  http_response_code(500);
-  die("Erro ao ler configurações");
+if (!$settings) {
+    davez_send_error(
+        'settings_unavailable',
+        'Configurações temporariamente indisponíveis.',
+        500
+    );
 }
 
-$s = $sRes->fetch_assoc();
-if (!$s || !isset($s['chamada_aberta'])) {
-  log_event("ERRO_SETTINGS_INVALIDO");
-  http_response_code(500);
-  die("Configurações inválidas");
+if ((int) ($settings['chamada_aberta'] ?? 0) !== 1) {
+    davez_send_error(
+        'queue_closed',
+        'A chamada está fechada.',
+        403
+    );
 }
-
-log_event("SETTINGS_OK", [
-  "chamada_aberta" => $s['chamada_aberta'],
-  "raio" => $s['raio'] ?? null,
-]);
-
-if (!$s['chamada_aberta']) {
-  log_event("ERRO_CHAMADA_FECHADA");
-  http_response_code(403);
-  die("Chamada fechada");
-}
-
-if ($token === '') {
-  log_event("ERRO_TOKEN_AUSENTE");
-  http_response_code(400);
-  die("Token não enviado");
-}
-
-if ($token !== $s['token']) {
-  log_event("ERRO_TOKEN_INVALIDO");
-  http_response_code(403);
-  die("Token inválido");
-}
-
-log_event("TOKEN_OK");
-
-if (!preg_match('/^[a-f0-9]{32}$/', $clientId)) {
-  $clientId = \DaVez\Domain\LegacyIdentity::clientId();
-  log_event("CID_GERADO");
-} else {
-  log_event("CID_OK");
-}
-
-setcookie('cid', $clientId, [
-  'expires' => time() + 60 * 60 * 24 * 30,
-  'path' => '/',
-  'secure' => davez_is_https_request(),
-  'httponly' => true,
-  'samesite' => 'Lax'
-]);
-
-if ($lat == 0 || $lng == 0) {
-  log_event("ERRO_LOCALIZACAO_ZERO");
-  http_response_code(400);
-  die("Ative a localização e tente novamente");
-}
-
-$latBase = floatval($s['lat_base']);
-$lngBase = floatval($s['lng_base']);
-$raio    = floatval($s['raio']);
 
 try {
-  $geofence = \DaVez\Domain\Geofence::evaluate(
-    $latBase,
-    $lngBase,
-    $raio,
-    $lat,
-    $lng
-  );
+    $geofence = \DaVez\Domain\Geofence::evaluate(
+        (float) $settings['lat_base'],
+        (float) $settings['lng_base'],
+        (float) $settings['raio'],
+        $latitude,
+        $longitude
+    );
 } catch (InvalidArgumentException $exception) {
-  log_event("ERRO_GEOFENCE_CONFIG");
-  davez_send_error(
-    'geofence_unavailable',
-    'Validação de localização temporariamente indisponível.',
-    503
-  );
+    davez_send_error(
+        'geofence_unavailable',
+        'Validação de localização temporariamente indisponível.',
+        503
+    );
 }
-
-log_event("DIST_OK", [
-  "distancia_m" => $geofence['distance_m'],
-  "raio_m" => $raio
-]);
 
 if (!$geofence['within']) {
-  log_event("ERRO_FORA_DO_RAIO", [
-    "distancia_m" => $geofence['distance_m'],
-    "raio_m" => $raio
-  ]);
-  http_response_code(403);
-  die("Você não está no local");
+    davez_send_error(
+        'outside_allowed_area',
+        'Você não está no local autorizado.',
+        403
+    );
 }
 
-$ip = $_SERVER['REMOTE_ADDR'] ?? '';
-$ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-
+$store = davez_public_identity_store($conn);
 $allocator = davez_atomic_order_allocator($conn);
+$loadedTicket = null;
+$checkinId = null;
 
 try {
-  $next = $allocator->allocateAndPersist(
-    'checkins:' . $operationalDate,
-    static function () use (
-      $conn,
-      $clientId,
-      $nome,
-      $operationalStart,
-      $operationalEnd
-    ): int {
-      $byClient = $conn->prepare(
-        "SELECT id
-         FROM checkins
-         WHERE client_id=?
-           AND data_hora >= ?
-           AND data_hora < ?
-         LIMIT 1"
-      );
+    $position = $allocator->allocateAndPersist(
+        'checkins:' . $operationalDate,
+        static function () use (
+            $conn,
+            $store,
+            $ticketHash,
+            $operationalDate,
+            $now,
+            $name,
+            $operationalStart,
+            $operationalEnd,
+            &$loadedTicket
+        ): int {
+            $loadedTicket = $store->loadTicketForUpdate(
+                $ticketHash,
+                'checkin',
+                $operationalDate,
+                $now
+            );
 
-      if (!$byClient) {
-        throw new RuntimeException('Falha ao preparar duplicidade por cliente.');
-      }
+            if ($loadedTicket === null) {
+                throw new DomainException('invalid_access_code');
+            }
 
-      $byClient->bind_param(
-        "sss",
-        $clientId,
-        $operationalStart,
-        $operationalEnd
-      );
+            $duplicate = $conn->prepare(
+                'SELECT id
+                 FROM checkins
+                 WHERE LOWER(TRIM(nome))=LOWER(TRIM(?))
+                   AND data_hora >= ?
+                   AND data_hora < ?
+                 LIMIT 1
+                 FOR UPDATE'
+            );
 
-      if (!$byClient->execute()) {
-        $byClient->close();
-        throw new RuntimeException('Falha ao validar duplicidade por cliente.');
-      }
+            if (!$duplicate) {
+                throw new RuntimeException(
+                    'Check-in indisponível para validação.'
+                );
+            }
 
-      $byClient->store_result();
-      $clientExists = $byClient->num_rows > 0;
-      $byClient->close();
+            $duplicate->bind_param(
+                'sss',
+                $name,
+                $operationalStart,
+                $operationalEnd
+            );
 
-      if ($clientExists) {
-        throw new DomainException('duplicate_client');
-      }
+            if (!$duplicate->execute()) {
+                $duplicate->close();
+                throw new RuntimeException(
+                    'Check-in indisponível para validação.'
+                );
+            }
 
-      $byName = $conn->prepare(
-        "SELECT id
-         FROM checkins
-         WHERE LOWER(TRIM(nome)) = LOWER(TRIM(?))
-           AND data_hora >= ?
-           AND data_hora < ?
-         LIMIT 1"
-      );
+            $duplicate->store_result();
+            $alreadyExists = $duplicate->num_rows > 0;
+            $duplicate->close();
 
-      if (!$byName) {
-        throw new RuntimeException('Falha ao preparar duplicidade por nome.');
-      }
+            if ($alreadyExists) {
+                throw new DomainException('duplicate_name');
+            }
 
-      $byName->bind_param(
-        "sss",
-        $nome,
-        $operationalStart,
-        $operationalEnd
-      );
+            $maximum = $conn->prepare(
+                'SELECT COALESCE(MAX(ordem), 0)
+                 FROM checkins
+                 WHERE data_hora >= ?
+                   AND data_hora < ?'
+            );
 
-      if (!$byName->execute()) {
-        $byName->close();
-        throw new RuntimeException('Falha ao validar duplicidade por nome.');
-      }
+            if (!$maximum) {
+                throw new RuntimeException(
+                    'Fila indisponível para ordenação.'
+                );
+            }
 
-      $byName->store_result();
-      $nameExists = $byName->num_rows > 0;
-      $byName->close();
+            $maximum->bind_param(
+                'ss',
+                $operationalStart,
+                $operationalEnd
+            );
 
-      if ($nameExists) {
-        throw new DomainException('duplicate_name');
-      }
+            if (!$maximum->execute()) {
+                $maximum->close();
+                throw new RuntimeException(
+                    'Fila indisponível para ordenação.'
+                );
+            }
 
-      $maximum = $conn->prepare(
-        "SELECT COALESCE(MAX(ordem), 0)
-         FROM checkins
-         WHERE data_hora >= ?
-           AND data_hora < ?"
-      );
+            $maximumOrder = 0;
+            $maximum->bind_result($maximumOrder);
+            $maximum->fetch();
+            $maximum->close();
 
-      if (!$maximum) {
-        throw new RuntimeException('Falha ao preparar próxima ordem.');
-      }
+            return (int) $maximumOrder;
+        },
+        static function (int $order) use (
+            $conn,
+            $store,
+            $name,
+            $operationalDate,
+            $now,
+            $sessionHash,
+            $sessionExpiresAt,
+            &$loadedTicket,
+            &$checkinId
+        ): void {
+            $insert = $conn->prepare(
+                'INSERT INTO checkins
+                   (nome, data_hora, operational_date, ordem)
+                 VALUES (?, NOW(), ?, ?)'
+            );
 
-      $maximum->bind_param("ss", $operationalStart, $operationalEnd);
+            if (!$insert) {
+                throw new RuntimeException(
+                    'Check-in indisponível para inserção.'
+                );
+            }
 
-      if (!$maximum->execute()) {
-        $maximum->close();
-        throw new RuntimeException('Falha ao consultar próxima ordem.');
-      }
+            $insert->bind_param(
+                'ssi',
+                $name,
+                $operationalDate,
+                $order
+            );
 
-      $maximumOrder = 0;
-      $maximum->bind_result($maximumOrder);
-      $maximum->fetch();
-      $maximum->close();
+            if (!$insert->execute() || $insert->affected_rows !== 1) {
+                $insert->close();
+                throw new RuntimeException(
+                    'Check-in indisponível para inserção.'
+                );
+            }
 
-      return (int) $maximumOrder;
-    },
-    static function (int $order) use (
-      $conn,
-      $nome,
-      $clientId,
-      $ip,
-      $ua
-    ): void {
-      $statement = $conn->prepare(
-        "INSERT INTO checkins
-           (nome, client_id, ip, user_agent, data_hora, ordem)
-         VALUES (?, ?, ?, ?, NOW(), ?)"
-      );
+            $checkinId = (int) $conn->insert_id;
+            $insert->close();
 
-      if (!$statement) {
-        throw new RuntimeException('Falha ao preparar inserção.');
-      }
+            if (
+                !is_array($loadedTicket)
+                || !$store->consumeTicket(
+                    (int) $loadedTicket['id'],
+                    $checkinId,
+                    $now
+                )
+            ) {
+                throw new RuntimeException(
+                    'O código individual não pôde ser consumido.'
+                );
+            }
 
-      $statement->bind_param(
-        "ssssi",
-        $nome,
-        $clientId,
-        $ip,
-        $ua,
-        $order
-      );
-
-      if (!$statement->execute()) {
-        $statement->close();
-        throw new RuntimeException('Falha ao inserir check-in.');
-      }
-
-      $statement->close();
-    }
-  );
-} catch (DomainException $exception) {
-  if ($exception->getMessage() === 'duplicate_client') {
-    log_event("ERRO_DUPLICADO");
-    davez_send_error(
-      'duplicate_checkin',
-      'Check-in já realizado no ciclo operacional atual.',
-      409
+            $store->createSession(
+                $checkinId,
+                $sessionHash,
+                $operationalDate,
+                $now,
+                $sessionExpiresAt
+            );
+        }
     );
-  }
+} catch (DomainException $exception) {
+    if ($exception->getMessage() === 'duplicate_name') {
+        davez_send_error(
+            'checkin_already_exists',
+            'Este check-in já existe. Solicite um código de recuperação ao administrador.',
+            409
+        );
+    }
 
-  log_event("ERRO_DUPLICADO_NOME");
-  davez_send_error(
-    'duplicate_name',
-    'Este nome já realizou check-in no ciclo operacional atual.',
-    409
-  );
+    davez_send_error(
+        'invalid_access_code',
+        'Código individual inválido, expirado ou já utilizado.',
+        403
+    );
 } catch (\DaVez\Database\LockUnavailable $exception) {
-  log_event("ORDEM_LOCK_FALHOU");
-  header('Retry-After: 2');
-  davez_send_error(
-    'queue_busy',
-    'Fila ocupada. Aguarde e tente novamente.',
-    503
-  );
+    header('Retry-After: 2');
+    davez_send_error(
+        'queue_busy',
+        'Fila ocupada. Aguarde e tente novamente.',
+        503
+    );
 } catch (Throwable $exception) {
-  log_event("ERRO_TX_ORDEM_INSERT");
-  davez_send_error(
-    'checkin_failed',
-    'Não foi possível registrar o check-in.',
-    500
-  );
+    log_event('PUBLIC_IDENTITY_CHECKIN_FAILED');
+    davez_send_error(
+        'checkin_failed',
+        'Não foi possível registrar o check-in.',
+        500
+    );
 }
 
-log_event("CHECKIN_OK", ["ordem" => $next]);
+davez_set_public_identity_cookie(
+    $sessionToken,
+    $sessionExpiresAt
+);
 
-echo "Check-in confirmado com sucesso! Sua posição na lista: " . intval($next) . "º";
+$identity = [
+    'checkin_id' => (int) $checkinId,
+    'nome' => $name,
+];
+
+davez_send_json([
+    'ok' => true,
+    'identity_version' => 2,
+    'operational_date' => $operationalDate,
+    'me' => davez_public_identity_me(
+        $conn,
+        $identity,
+        $operationalContext
+    ),
+]);

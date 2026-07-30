@@ -13,6 +13,7 @@ const publicFiles = new Map([
   ["/service-worker.js", "service-worker.js"],
   ["/icons/icon-192.png", "icons/icon-192.png"],
   ["/icons/icon-512.png", "icons/icon-512.png"],
+  ["/icons/icon-512-v2.png", "icons/icon-512-v2.png"],
   ["/img/logo.png", "img/logo.png"],
 ]);
 
