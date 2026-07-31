@@ -1,0 +1,19 @@
+; user.ini.example — modelo do .user.ini para hospedagem compartilhada.
+;
+; COMO USAR
+;   1. Copie para o webroot (a mesma pasta dos .php públicos) com o nome .user.ini
+;   2. Ajuste o caminho de auto_prepend_file para o seu davez-env.php real,
+;      que deve ficar FORA do public_html.
+;
+; O .user.ini é lido pelo PHP-FPM a cada requisição e carrega o ambiente
+; ANTES de qualquer endpoint — as variáveis precisam existir antes do primeiro
+; require (o rate limiter e o HMAC do ticket rodam antes do config.php).
+
+auto_prepend_file = "/home/SEU_USUARIO/davez-env.php"
+
+; Nunca exibir erros ao cliente; registrar apenas no log do servidor.
+display_errors = Off
+log_errors = On
+
+; Limite de upload não é necessário para esta aplicação (sem upload de arquivos).
+; Ajuste conforme a política do seu plano, se preciso.

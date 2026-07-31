@@ -22,6 +22,11 @@
 *.dump
 *.sql.gz
 *.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+*.tgz
 
 # Dependências e resultados de ferramentas
 /vendor/
