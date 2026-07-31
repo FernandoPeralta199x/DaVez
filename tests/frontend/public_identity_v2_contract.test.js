@@ -98,7 +98,7 @@ assert.doesNotMatch(
   "localStorage só pode persistir a preferência visual, nunca a identidade pública"
 );
 
-assert.match(serviceWorker, /const CACHE_NAME = "motoboys-static-v8";/);
+assert.match(serviceWorker, /const CACHE_NAME = "motoboys-static-v9";/);
 assert.match(
   serviceWorker,
   /if \(!request \|\| request\.method !== "GET"\) \{\s*return REQUEST_STRATEGY\.NETWORK_ONLY;/

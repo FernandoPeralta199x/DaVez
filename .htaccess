@@ -6,7 +6,7 @@
   Header always set X-Content-Type-Options "nosniff"
   Header always set X-Frame-Options "DENY"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
-  Header always set Permissions-Policy "geolocation=(self)"
+  Header always set Permissions-Policy "geolocation=(self), camera=(self)"
   Header always set Cross-Origin-Opener-Policy "same-origin"
 </IfModule>
 

@@ -17,7 +17,7 @@ function request(path, options = {}) {
   };
 }
 
-assert.equal(CACHE_NAME, "motoboys-static-v8");
+assert.equal(CACHE_NAME, "motoboys-static-v9");
 
 for (const assetPath of STATIC_ASSET_PATHS) {
   assert.equal(
@@ -123,6 +123,7 @@ async function testFetchEventBoundary() {
       "motoboys-static-v5",
       "motoboys-static-v7",
       "motoboys-static-v8",
+      "motoboys-static-v9",
       "cache-de-outra-aplicacao",
     ],
     delete: async cacheName => {
@@ -203,6 +204,7 @@ async function testFetchEventBoundary() {
       "motoboys-static-v4",
       "motoboys-static-v5",
       "motoboys-static-v7",
+      "motoboys-static-v8",
     ],
     "a ativação deve remover o cache antigo sem apagar caches alheios"
   );

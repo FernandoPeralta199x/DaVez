@@ -746,6 +746,141 @@ button:disabled {
   background: var(--success-soft);
 }
 
+.input-with-action {
+  display: flex;
+  align-items: stretch;
+  gap: 0.55rem;
+}
+
+.input-with-action input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.scan-btn {
+  flex: 0 0 auto;
+  width: 3.25rem;
+  min-width: 3.25rem;
+  min-height: 3.25rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #bcc7d9;
+  border-radius: var(--radius-control);
+  color: var(--route);
+  background: var(--surface);
+  box-shadow: inset 0 1px 2px rgba(11, 24, 56, 0.04);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 240ms cubic-bezier(0.32, 0.72, 0, 1), border-color 240ms cubic-bezier(0.32, 0.72, 0, 1), background 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.scan-btn svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.scan-btn:hover:not(:disabled) {
+  border-color: var(--route);
+  background: rgba(22, 79, 201, 0.07);
+}
+
+.scan-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.scan-btn:focus-visible {
+  border-color: var(--route);
+  box-shadow: 0 0 0 0.23rem rgba(22, 79, 201, 0.18);
+  outline: none;
+}
+
+.scan-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(4, 10, 22, 0.72);
+}
+
+.scan-overlay.show {
+  display: flex;
+}
+
+.scan-panel {
+  width: 100%;
+  max-width: 26rem;
+  padding: 1.4rem;
+  border-radius: var(--radius-lg, 1.25rem);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 24px 60px rgba(4, 10, 22, 0.45);
+  text-align: center;
+}
+
+.scan-title {
+  margin: 0 0 0.3rem;
+  font-size: 1.15rem;
+  font-weight: 720;
+}
+
+.scan-desc {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.scan-viewport {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-height: 58vh;
+  margin: 0 auto 0.9rem;
+  border-radius: 1rem;
+  overflow: hidden;
+  background: #04101f;
+}
+
+.scan-viewport video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.scan-reticle {
+  position: absolute;
+  inset: 17%;
+  border: 3px solid rgba(255, 255, 255, 0.92);
+  border-radius: 1rem;
+  pointer-events: none;
+}
+
+.scan-status {
+  min-height: 1.2rem;
+  margin: 0 0 0.9rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.scan-cancel {
+  width: 100%;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid #bcc7d9;
+  box-shadow: none;
+}
+
+.scan-cancel:hover:not(:disabled) {
+  background: rgba(22, 79, 201, 0.06);
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -1636,18 +1771,30 @@ button:disabled {
 
       <div class="field">
         <label for="accessCode">Código individual</label>
-        <input
-          id="accessCode"
-          name="access_code"
-          type="text"
-          placeholder="Digite seu código individual"
-          inputmode="text"
-          autocomplete="one-time-code"
-          maxlength="19"
-          aria-describedby="accessCodeHint"
-          required
-        />
-        <span id="accessCodeHint" class="field-hint">Use o código individual recebido para este ciclo.</span>
+        <div class="input-with-action">
+          <input
+            id="accessCode"
+            name="access_code"
+            type="text"
+            placeholder="Digite seu código individual"
+            inputmode="text"
+            autocomplete="one-time-code"
+            maxlength="19"
+            aria-describedby="accessCodeHint"
+            required
+          />
+          <button type="button" id="btnScanQr" class="scan-btn"
+            aria-label="Ler o código pela câmera"
+            title="Ler o QR com a câmera">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+              aria-hidden="true" focusable="false">
+              <path d="M4.5 8.6A1.6 1.6 0 0 1 6.1 7h1.3l.9-1.5a1 1 0 0 1 .86-.5h5.76a1 1 0 0 1 .86.5l.9 1.5h1.3A1.6 1.6 0 0 1 19.5 8.6v8A1.6 1.6 0 0 1 17.9 18H6.1a1.6 1.6 0 0 1-1.6-1.6z"></path>
+              <circle cx="12" cy="12.4" r="3.1"></circle>
+            </svg>
+          </button>
+        </div>
+        <span id="accessCodeHint" class="field-hint">Digite o código ou toque na câmera para ler o QR.</span>
       </div>
 
       <button id="btn" type="button" onclick="checkin()" aria-describedby="geoHint">Fazer check-in</button>
@@ -1763,6 +1910,20 @@ button:disabled {
   </div>
 </div>
 
+<div id="scanOverlay" class="scan-overlay" role="dialog" aria-modal="true"
+  aria-labelledby="scanTitle" aria-describedby="scanDesc" aria-hidden="true">
+  <div class="scan-panel">
+    <h2 id="scanTitle" class="scan-title">Ler o QR do código</h2>
+    <p id="scanDesc" class="scan-desc">Aponte a câmera para o QR mostrado pela equipe.</p>
+    <div class="scan-viewport">
+      <video id="scanVideo" playsinline muted></video>
+      <div class="scan-reticle" aria-hidden="true"></div>
+    </div>
+    <p id="scanStatus" class="scan-status" role="status" aria-live="polite"></p>
+    <button type="button" id="btnCloseScan" class="scan-cancel">Cancelar</button>
+  </div>
+</div>
+
 <button id="btnRefreshFloat" class="fab-refresh" type="button" onclick="atualizarSistema()" aria-label="Buscar atualização do sistema" title="Buscar atualização">
   <span class="fab-refresh-icon" aria-hidden="true">↻</span>
   <span class="fab-refresh-text">Atualizar</span>
@@ -1841,6 +2002,131 @@ function clearStatus() {
   el.textContent = "";
   delete el.dataset.tone;
   el.classList.remove("show");
+}
+
+let qrScanStream = null;
+let qrScanRAF = null;
+let qrScanDetector = null;
+
+function qrScannerSupported() {
+  return typeof window.BarcodeDetector === "function"
+    && !!navigator.mediaDevices
+    && typeof navigator.mediaDevices.getUserMedia === "function";
+}
+
+function extractAccessCodeFromScan(text) {
+  let candidate = String(text || "").trim();
+  try {
+    const url = new URL(candidate);
+    const fragment = url.hash.startsWith("#") ? url.hash.slice(1) : "";
+    const params = new URLSearchParams(fragment);
+    if (params.has("access_code")) candidate = params.get("access_code") || "";
+  } catch (error) {
+    // O QR pode conter só o código, sem ser uma URL.
+  }
+  candidate = candidate.trim().toUpperCase();
+  return /^[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){3}$/.test(candidate)
+    ? candidate
+    : null;
+}
+
+async function openQrScanner() {
+  if (!qrScannerSupported()) {
+    showModal({
+      type: "info",
+      title: "Leitura por câmera indisponível",
+      message: "Seu navegador não lê QR pela câmera. Abra o aplicativo de câmera do celular para ler o QR (ele preenche o código sozinho) ou digite o código manualmente."
+    });
+    return;
+  }
+
+  const overlay = document.getElementById("scanOverlay");
+  const video = document.getElementById("scanVideo");
+  const statusEl = document.getElementById("scanStatus");
+  statusEl.textContent = "Abrindo a câmera…";
+  overlay.classList.add("show");
+  overlay.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+
+  try {
+    qrScanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" },
+      audio: false
+    });
+  } catch (error) {
+    statusEl.textContent = "";
+    closeQrScanner();
+    showModal({
+      type: "warn",
+      title: "Câmera não liberada",
+      message: "Não foi possível acessar a câmera. Verifique a permissão do navegador e tente novamente."
+    });
+    return;
+  }
+
+  video.srcObject = qrScanStream;
+  try {
+    await video.play();
+  } catch (error) {
+    // Alguns navegadores atrasam o play; o loop segue mesmo assim.
+  }
+  statusEl.textContent = "Aponte para o QR do código.";
+
+  try {
+    qrScanDetector = new window.BarcodeDetector({ formats: ["qr_code"] });
+  } catch (error) {
+    qrScanDetector = new window.BarcodeDetector();
+  }
+
+  const tick = async () => {
+    if (!qrScanStream || !qrScanDetector) return;
+    try {
+      const codes = await qrScanDetector.detect(video);
+      for (const code of codes) {
+        const access = extractAccessCodeFromScan(code.rawValue);
+        if (access) {
+          handleScannedAccessCode(access);
+          return;
+        }
+      }
+      if (codes.length > 0) {
+        statusEl.textContent = "QR lido, mas sem um código válido. Tente outro.";
+      }
+    } catch (error) {
+      // Frames isolados podem falhar; seguimos tentando.
+    }
+    qrScanRAF = requestAnimationFrame(tick);
+  };
+  qrScanRAF = requestAnimationFrame(tick);
+}
+
+function handleScannedAccessCode(access) {
+  const field = document.getElementById("accessCode");
+  field.value = access;
+  closeQrScanner();
+  setStatus("Código lido pelo QR. Informe seu nome e faça o check-in.", "success");
+  field.focus();
+}
+
+function closeQrScanner() {
+  const overlay = document.getElementById("scanOverlay");
+  const video = document.getElementById("scanVideo");
+  if (qrScanRAF) {
+    cancelAnimationFrame(qrScanRAF);
+    qrScanRAF = null;
+  }
+  if (qrScanStream) {
+    qrScanStream.getTracks().forEach((track) => track.stop());
+    qrScanStream = null;
+  }
+  qrScanDetector = null;
+  if (video) {
+    video.pause();
+    video.srcObject = null;
+  }
+  overlay.classList.remove("show");
+  overlay.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
 }
 
 function applyAccessCodeFromFragment() {
@@ -2903,6 +3189,17 @@ window.addEventListener("beforeinstallprompt", (e) => {
 document.addEventListener("DOMContentLoaded", () => {
   applyTheme(document.documentElement.dataset.theme || "light");
   applyAccessCodeFromFragment();
+
+  const btnScanQr = document.getElementById("btnScanQr");
+  if (btnScanQr) btnScanQr.addEventListener("click", openQrScanner);
+  const btnCloseScan = document.getElementById("btnCloseScan");
+  if (btnCloseScan) btnCloseScan.addEventListener("click", closeQrScanner);
+  document.addEventListener("keydown", (event) => {
+    const overlay = document.getElementById("scanOverlay");
+    if (event.key === "Escape" && overlay && overlay.classList.contains("show")) {
+      closeQrScanner();
+    }
+  });
   document.querySelectorAll("[data-theme-option]").forEach((option) => {
     option.addEventListener("click", () => {
       applyTheme(option.dataset.themeOption, true);
