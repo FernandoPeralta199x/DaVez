@@ -743,13 +743,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
       }
     }
 
+    // A validade do ticket precisa caber inteira dentro do ciclo (10 min antes
+    // da virada das 06:00). Perto do fim, a emissão é recusada de propósito —
+    // isso não é erro de schema, então damos uma mensagem específica.
     try {
-      $accessCode = davez_public_ticket_code();
       $issuedAt = $operationalContext->reference();
       $expiresAt = davez_public_ticket_expires_at(
         $operationalContext,
         $issuedAt
       );
+    } catch (RuntimeException $exception) {
+      $fimCiclo = $operationalContext->end()->format('H:i');
+      json_out([
+        'sucesso' => false,
+        'erro' => "Perto da virada do ciclo (às {$fimCiclo}). Aguarde a virada e gere o código novamente."
+      ], 409);
+    }
+
+    try {
+      $accessCode = davez_public_ticket_code();
       davez_public_identity_store($conn)->issueTicket(
         davez_public_ticket_hash($accessCode),
         $purpose,
