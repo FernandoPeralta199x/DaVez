@@ -58,7 +58,11 @@ assert.match(script, /applySessionMe\(data\.me\)/);
 
 assert.match(script, /await refreshSessionInfo\(\{silent:true\}\)/);
 assert.match(script, /await refreshDaVezFromServer\(\)/);
-assert.match(script, /setInterval\(refreshServerTruth,\s*5000\)/);
+// O laço periódico consulta apenas a fila; session_info sai do caminho quente.
+assert.match(script, /setInterval\(pollDaVezQueue,\s*DAVEZ_POLL_INTERVAL_MS\)/);
+assert.match(script, /const DAVEZ_POLL_INTERVAL_MS = \d+/);
+assert.match(script, /document\.hidden/);
+assert.match(script, /stopDaVezPolling\(\)/);
 assert.match(script, /data\.next/);
 assert.match(script, /data\.me/);
 assert.match(script, /data\.counts/);
@@ -94,7 +98,7 @@ assert.doesNotMatch(
   "localStorage só pode persistir a preferência visual, nunca a identidade pública"
 );
 
-assert.match(serviceWorker, /const CACHE_NAME = "motoboys-static-v7";/);
+assert.match(serviceWorker, /const CACHE_NAME = "motoboys-static-v8";/);
 assert.match(
   serviceWorker,
   /if \(!request \|\| request\.method !== "GET"\) \{\s*return REQUEST_STRATEGY\.NETWORK_ONLY;/

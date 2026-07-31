@@ -2206,6 +2206,7 @@ async function refreshSessionInfo({silent=false}={}) {
 
 /* ===== DA VEZ ===== */
 let davezPollTimer = null;
+let davezHadServerState = false;
 
 function setDaVezBox(pos, depoisDe){
   const box = document.getElementById("davezBox");
@@ -2315,6 +2316,13 @@ async function refreshDaVezFromServer(){
       : null;
 
     if (!me) {
+      // Perder o "me" significa sessão expirada ou ciclo encerrado. Fora do
+      // laço quente, session_info não roda a cada poll; então ressincronizamos
+      // o estado de login uma única vez, só na transição.
+      if (davezHadServerState) {
+        davezHadServerState = false;
+        refreshSessionInfo({silent:true});
+      }
       clearDaVezState();
       if (nextName) {
         document.getElementById("davezAfter").textContent = nextName;
@@ -2322,6 +2330,7 @@ async function refreshDaVezFromServer(){
       return;
     }
 
+    davezHadServerState = true;
     setDaVezStateUI({
       status: me.status || (me.is_next === true ? "na_fila" : "aguardando"),
       pos: Number.isFinite(Number(me.position)) ? Number(me.position) : null,
@@ -2338,9 +2347,32 @@ async function refreshDaVezFromServer(){
   }
 }
 
+// Intervalo do polling da fila. Cada ciclo consulta apenas DaVez/listar.php;
+// o estado de sessão (session_info) muda raramente e é ressincronizado na
+// carga, após ações e ao voltar o foco. Isso mantém o pior caso em uma
+// requisição por ciclo, mesmo com dezenas de aparelhos no mesmo IP da loja.
+const DAVEZ_POLL_INTERVAL_MS = 10000;
+let davezPollInFlight = false;
+
+async function pollDaVezQueue(){
+  if (davezPollInFlight) return;
+  davezPollInFlight = true;
+  try {
+    await refreshDaVezFromServer();
+  } finally {
+    davezPollInFlight = false;
+  }
+}
+
 function startDaVezPolling(){
   if (davezPollTimer) return;
-  davezPollTimer = setInterval(refreshServerTruth, 5000);
+  davezPollTimer = setInterval(pollDaVezQueue, DAVEZ_POLL_INTERVAL_MS);
+}
+
+function stopDaVezPolling(){
+  if (!davezPollTimer) return;
+  clearInterval(davezPollTimer);
+  davezPollTimer = null;
 }
 
 let serverTruthRefreshing = false;
@@ -2737,6 +2769,19 @@ async function logoutPublicSession() {
     button.textContent = "Encerrar sessão neste dispositivo";
   }
 }
+
+// Um aparelho com a tela apagada não precisa consultar o servidor. Pausar o
+// polling em segundo plano derruba a carga real bem abaixo do pior caso, já
+// que a maioria dos motoboys aguarda com o celular no bolso.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    stopDaVezPolling();
+    return;
+  }
+
+  refreshServerTruth();
+  startDaVezPolling();
+});
 
 (async function initIdentityV2() {
   await refreshServerTruth();
