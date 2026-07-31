@@ -1999,6 +1999,28 @@ button:disabled{cursor:not-allowed;opacity:.48}
   letter-spacing:-.035em;
 }
 .dash .sub{margin-top:6px;color:var(--ink-soft);font-size:.78rem}
+/* Coesao visual: numeros estaveis, tier de metricas com acento e entrada por secao. */
+.dash .v,
+#issuedTicketCountdown,
+.ticket-validity time,
+.ticket-validity strong{
+  font-variant-numeric:tabular-nums;
+}
+.mcard{position:relative;overflow:hidden}
+.mcard::before{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  top:0;
+  height:3px;
+  background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 12%,transparent));
+}
+.section{animation:sectionReveal .45s var(--ease) both}
+@keyframes sectionReveal{
+  from{opacity:0;transform:translateY(8px)}
+  to{opacity:1;transform:translateY(0)}
+}
 .actions,.toolbar,.item-actions,.order-actions{
   display:flex;
   flex-wrap:wrap;
