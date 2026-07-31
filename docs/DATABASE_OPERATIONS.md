@@ -70,12 +70,19 @@ As migrations são numeradas e devem ser aplicadas estritamente nesta ordem:
 6. `database/migrations/006_create_admission_tickets.sql`
 7. `database/migrations/007_create_public_sessions.sql`
 8. `database/migrations/008_link_queue_to_checkins.sql`
+9. `database/migrations/009_create_delivery_events.sql`
 
-As migrations `001` a `004`, `006` e `007` usam
+As migrations `001` a `004`, `006`, `007` e `009` usam
 `CREATE TABLE IF NOT EXISTS`. Isso não valida uma tabela incompatível com o
 mesmo nome. As migrations `005` e `008` usam `ALTER TABLE`, devem ser executadas
 exatamente uma vez e exigem preflight que confirme a ausência das novas
 colunas, chaves e constraints.
+
+A migration `009` cria `delivery_events`, um log append-only de despachos que
+alimenta o ranking de motoboys. Ela deve ser aplicada por um usuário com
+privilégio de DDL (não pelo usuário de runtime do app). A tabela é intencionalmente
+sem chave estrangeira para `checkins`, porque precisa sobreviver à limpeza do
+ciclo; a limpeza (`limpar`) não a apaga.
 
 `database/schema.sql` reúne o mesmo contrato e deve ser usado apenas para criar
 um banco vazio em ambiente local ou de staging descartável.

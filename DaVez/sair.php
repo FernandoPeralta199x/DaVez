@@ -58,6 +58,47 @@ try {
   $lockedTransactions->run(
     'fila_da_vez:' . $dia,
     static function () use ($conn, $id, $dia): void {
+      // Captura a linha antes do despacho para registrar a entrega.
+      $lookup = $conn->prepare(
+        "SELECT nome, checkin_id, entered_at
+         FROM fila_da_vez
+         WHERE id=?
+           AND dia=?
+           AND status='na_fila'
+         LIMIT 1
+         FOR UPDATE"
+      );
+
+      if (!$lookup) {
+        throw new RuntimeException(
+          'Fila indisponível para atualização.'
+        );
+      }
+
+      $lookup->bind_param("is", $id, $dia);
+
+      if (!$lookup->execute()) {
+        $lookup->close();
+        throw new RuntimeException(
+          'Fila indisponível para atualização.'
+        );
+      }
+
+      $dispatchedName = null;
+      $dispatchedCheckinId = null;
+      $dispatchedEnteredAt = null;
+      $lookup->bind_result(
+        $dispatchedName,
+        $dispatchedCheckinId,
+        $dispatchedEnteredAt
+      );
+
+      if (!$lookup->fetch()) {
+        $lookup->close();
+        throw new DomainException('queue_item_not_found');
+      }
+      $lookup->close();
+
       $statement = $conn->prepare(
         "UPDATE fila_da_vez
          SET status='em_entrega', last_action_at=NOW()
@@ -88,6 +129,38 @@ try {
       }
 
       $statement->close();
+
+      // Registra a entrega num log durável (sobrevive ao fechamento do ciclo)
+      // que alimenta o ranking. queue_wait_seconds mede o tempo na fila.
+      $deliveryLog = $conn->prepare(
+        "INSERT INTO delivery_events
+           (operational_date, checkin_id, nome, dispatched_at,
+            queue_wait_seconds)
+         VALUES (?, ?, ?, NOW(),
+            GREATEST(0, TIMESTAMPDIFF(SECOND, ?, NOW())))"
+      );
+
+      if (!$deliveryLog) {
+        throw new RuntimeException(
+          'Registro de entrega indisponível.'
+        );
+      }
+
+      $deliveryLog->bind_param(
+        "siss",
+        $dia,
+        $dispatchedCheckinId,
+        $dispatchedName,
+        $dispatchedEnteredAt
+      );
+
+      if (!$deliveryLog->execute()) {
+        $deliveryLog->close();
+        throw new RuntimeException(
+          'Registro de entrega indisponível.'
+        );
+      }
+      $deliveryLog->close();
 
       $remaining = $conn->prepare(
         "SELECT id

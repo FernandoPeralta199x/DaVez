@@ -223,3 +223,23 @@ CREATE TABLE IF NOT EXISTS reports (
 ) ENGINE=InnoDB
   DEFAULT CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
+
+-- Log durável de despachos (Migration 009). Append-only, sobrevive ao
+-- fechamento do ciclo; alimenta o ranking de motoboys. Sem FK para checkins.
+CREATE TABLE IF NOT EXISTS delivery_events (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    operational_date DATE NOT NULL,
+    checkin_id BIGINT UNSIGNED NULL,
+    nome VARCHAR(120) NOT NULL,
+    dispatched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    queue_wait_seconds INT UNSIGNED NULL,
+    PRIMARY KEY (id),
+    KEY idx_delivery_date_name (operational_date, nome),
+    KEY idx_delivery_date_time (operational_date, dispatched_at),
+    KEY idx_delivery_checkin (checkin_id, operational_date),
+    CONSTRAINT chk_delivery_wait CHECK (
+        queue_wait_seconds IS NULL OR queue_wait_seconds >= 0
+    )
+) ENGINE=InnoDB
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;

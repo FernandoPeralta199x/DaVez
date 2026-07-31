@@ -55,12 +55,26 @@ for (const action of [
 assert.match(interfaceSource, /role="tablist"/);
 assert.equal(
   (interfaceSource.match(/<button\b[^>]*role="tab"/g) || []).length,
-  6
+  7
 );
 assert.equal(
   (interfaceSource.match(/<section\b[^>]*role="tabpanel"/g) || []).length,
-  6
+  7
 );
+assert.match(
+  interfaceSource,
+  /id="tab-ranking" role="tab"[\s\S]*?aria-controls="ranking"[\s\S]*?data-tab="ranking"/
+);
+assert.match(
+  interfaceSource,
+  /id="ranking" class="section" role="tabpanel"[\s\S]*?aria-labelledby="tab-ranking"[\s\S]*?hidden/
+);
+assert.match(interfaceSource, /id="ranking-title">Ranking de Motoboys<\/h2>/);
+assert.match(interfaceSource, /id="rankingBox"/);
+assert.match(interfaceSource, /data-periodo="dia"[\s\S]*?data-periodo="semana"[\s\S]*?data-periodo="mes"/);
+assert.match(inlineScript, /async function carregarRanking\(/);
+assert.match(inlineScript, /admin\.php\?action=ranking/);
+assert.match(inlineScript, /if \(id === 'ranking'\) carregarRanking/);
 assert.match(
   interfaceSource,
   /id="tab-qrcode" role="tab"[\s\S]*?aria-controls="qrcode"[\s\S]*?data-tab="qrcode"/

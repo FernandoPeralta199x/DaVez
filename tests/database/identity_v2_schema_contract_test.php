@@ -58,6 +58,7 @@ $expectedMigrations = [
     '006_create_admission_tickets.sql',
     '007_create_public_sessions.sql',
     '008_link_queue_to_checkins.sql',
+    '009_create_delivery_events.sql',
 ];
 $actualMigrations = array_map(
     'basename',

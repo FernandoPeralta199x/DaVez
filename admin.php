@@ -5,6 +5,7 @@ require_once __DIR__ . '/src/Domain/OperationalContext.php';
 require_once __DIR__ . '/src/Domain/QueueStateChanged.php';
 require_once __DIR__ . '/src/Domain/QueueReorder.php';
 require_once __DIR__ . '/src/Domain/ReportSnapshot.php';
+require_once __DIR__ . '/src/Domain/DeliveryRanking.php';
 require_once __DIR__ . '/src/Database/bootstrap.php';
 require_once __DIR__ . '/log.php';
 davez_install_safe_exception_handler();
@@ -260,7 +261,8 @@ $readActions = [
   'lista',
   'listar_relatorios',
   'ver_relatorio',
-  'logs'
+  'logs',
+  'ranking'
 ];
 
 if ($action !== '') {
@@ -270,11 +272,15 @@ if ($action !== '') {
     json_out(['erro' => 'Ação de leitura inválida.'], 400);
   }
 
+  $allowedReadKeys = ['action'];
+  if ($action === 'ver_relatorio') {
+    $allowedReadKeys = ['action', 'id'];
+  } elseif ($action === 'ranking') {
+    $allowedReadKeys = ['action', 'periodo'];
+  }
+
   try {
-    davez_assert_allowed_input_keys(
-      $_GET,
-      $action === 'ver_relatorio' ? ['action', 'id'] : ['action']
-    );
+    davez_assert_allowed_input_keys($_GET, $allowedReadKeys);
   } catch (InvalidArgumentException $exception) {
     json_out(['erro' => 'Parâmetros de leitura inválidos.'], 400);
   }
@@ -363,6 +369,182 @@ if ($action === "logs") {
   json_out([
     'ok' => true,
     'eventos' => read_recent_log_events(100),
+  ]);
+}
+
+if ($action === "ranking") {
+  $periodo = is_string($_GET['periodo'] ?? null) ? $_GET['periodo'] : 'dia';
+
+  try {
+    $bounds = \DaVez\Domain\DeliveryRanking::periodBounds(
+      $periodo,
+      $operationalDate
+    );
+    $previous = \DaVez\Domain\DeliveryRanking::previousBounds(
+      $periodo,
+      $operationalDate
+    );
+  } catch (InvalidArgumentException $exception) {
+    json_out(['erro' => 'Período inválido.'], 400);
+  }
+
+  // Agregado do período por motoboy (nome é a chave natural do sistema).
+  $aggregate = $conn->prepare(
+    "SELECT nome,
+            COUNT(*) AS entregas,
+            COUNT(DISTINCT operational_date) AS dias_ativos,
+            ROUND(AVG(queue_wait_seconds)) AS espera_media_seg
+     FROM delivery_events
+     WHERE operational_date >= ?
+       AND operational_date <= ?
+     GROUP BY nome
+     ORDER BY entregas DESC, nome ASC
+     LIMIT 200"
+  );
+
+  if (!$aggregate) {
+    json_out(['erro' => 'Ranking indisponível.'], 500);
+  }
+
+  $aggregate->bind_param('ss', $bounds['start'], $bounds['end']);
+
+  if (!$aggregate->execute()) {
+    $aggregate->close();
+    json_out(['erro' => 'Ranking indisponível.'], 500);
+  }
+
+  $result = $aggregate->get_result();
+  $motoboys = [];
+  while ($row = $result->fetch_assoc()) {
+    $motoboys[$row['nome']] = [
+      'nome' => (string) $row['nome'],
+      'entregas' => (int) $row['entregas'],
+      'dias_ativos' => (int) $row['dias_ativos'],
+      'espera_media_seg' => $row['espera_media_seg'] === null
+        ? null
+        : (int) $row['espera_media_seg'],
+      'serie' => [],
+      'entregas_anterior' => 0,
+    ];
+  }
+  $aggregate->close();
+
+  // Série diária do período, para a evolução (sparkline).
+  if ($motoboys !== []) {
+    $series = $conn->prepare(
+      "SELECT nome, operational_date, COUNT(*) AS entregas
+       FROM delivery_events
+       WHERE operational_date >= ?
+         AND operational_date <= ?
+       GROUP BY nome, operational_date"
+    );
+
+    if (!$series) {
+      json_out(['erro' => 'Ranking indisponível.'], 500);
+    }
+
+    $series->bind_param('ss', $bounds['start'], $bounds['end']);
+
+    if (!$series->execute()) {
+      $series->close();
+      json_out(['erro' => 'Ranking indisponível.'], 500);
+    }
+
+    $daily = [];
+    $seriesResult = $series->get_result();
+    while ($row = $seriesResult->fetch_assoc()) {
+      $daily[(string) $row['nome']][(string) $row['operational_date']] =
+        (int) $row['entregas'];
+    }
+    $series->close();
+
+    // Preenche zeros para todos os dias do período, mantendo a ordem.
+    $days = [];
+    $cursor = new DateTimeImmutable($bounds['start']);
+    $limit = new DateTimeImmutable($bounds['end']);
+    while ($cursor <= $limit) {
+      $days[] = $cursor->format('Y-m-d');
+      $cursor = $cursor->modify('+1 day');
+    }
+
+    foreach ($motoboys as $nome => &$dados) {
+      foreach ($days as $day) {
+        $dados['serie'][] = $daily[$nome][$day] ?? 0;
+      }
+    }
+    unset($dados);
+
+    // Totais do período anterior, para a evolução percentual.
+    $prevQuery = $conn->prepare(
+      "SELECT nome, COUNT(*) AS entregas
+       FROM delivery_events
+       WHERE operational_date >= ?
+         AND operational_date <= ?
+       GROUP BY nome"
+    );
+
+    if (!$prevQuery) {
+      json_out(['erro' => 'Ranking indisponível.'], 500);
+    }
+
+    $prevQuery->bind_param('ss', $previous['start'], $previous['end']);
+
+    if (!$prevQuery->execute()) {
+      $prevQuery->close();
+      json_out(['erro' => 'Ranking indisponível.'], 500);
+    }
+
+    $prevResult = $prevQuery->get_result();
+    while ($row = $prevResult->fetch_assoc()) {
+      $nome = (string) $row['nome'];
+      if (isset($motoboys[$nome])) {
+        $motoboys[$nome]['entregas_anterior'] = (int) $row['entregas'];
+      }
+    }
+    $prevQuery->close();
+  }
+
+  // Monta a resposta ordenada por pontuação.
+  $ranking = [];
+  foreach ($motoboys as $dados) {
+    $pontuacao = \DaVez\Domain\DeliveryRanking::score(
+      $dados['entregas'],
+      $dados['dias_ativos']
+    );
+    $evolucao = \DaVez\Domain\DeliveryRanking::evolutionPercent(
+      $dados['entregas'],
+      $dados['entregas_anterior']
+    );
+    $ranking[] = [
+      'nome' => $dados['nome'],
+      'entregas' => $dados['entregas'],
+      'dias_ativos' => $dados['dias_ativos'],
+      'media_dia' => $dados['dias_ativos'] > 0
+        ? round($dados['entregas'] / $dados['dias_ativos'], 1)
+        : 0,
+      'espera_media_seg' => $dados['espera_media_seg'],
+      'pontuacao' => $pontuacao,
+      'evolucao_pct' => $evolucao,
+      'serie' => $dados['serie'],
+    ];
+  }
+
+  usort($ranking, static function (array $a, array $b): int {
+    if ($a['pontuacao'] !== $b['pontuacao']) {
+      return $b['pontuacao'] <=> $a['pontuacao'];
+    }
+    if ($a['entregas'] !== $b['entregas']) {
+      return $b['entregas'] <=> $a['entregas'];
+    }
+    return strcasecmp($a['nome'], $b['nome']);
+  });
+
+  json_out([
+    'ok' => true,
+    'periodo' => $periodo,
+    'inicio' => $bounds['start'],
+    'fim' => $bounds['end'],
+    'ranking' => $ranking,
   ]);
 }
 
@@ -1612,7 +1794,7 @@ button:disabled{cursor:not-allowed;opacity:.48}
 }
 .tabs{
   display:grid;
-  grid-template-columns:repeat(6,minmax(0,1fr));
+  grid-template-columns:repeat(7,minmax(0,1fr));
   gap:6px;
 }
 .tab{
@@ -2031,6 +2213,105 @@ button:disabled{cursor:not-allowed;opacity:.48}
   from{opacity:0;transform:translateY(8px)}
   to{opacity:1;transform:translateY(0)}
 }
+/* ===== Ranking de motoboys ===== */
+.ranking-heading{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:8px;
+}
+.ranking-intro{max-width:60ch;color:var(--ink-soft)}
+.ranking-filter{
+  display:inline-flex;
+  gap:4px;
+  padding:4px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--surface-muted);
+}
+.ranking-period{
+  width:auto;
+  min-height:40px;
+  padding:6px 16px;
+  border:1px solid transparent;
+  border-radius:9px;
+  background:transparent;
+  color:var(--ink-soft);
+  font-weight:750;
+  transition:background-color .2s var(--ease),color .2s var(--ease),border-color .2s var(--ease);
+}
+.ranking-period.active{
+  background:var(--surface-raised);
+  color:var(--accent-strong);
+  border-color:var(--line);
+  box-shadow:0 2px 8px rgba(30,50,45,.08);
+}
+.ranking-list{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.ranking-row{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:16px;
+  padding:14px 16px;
+  border:1px solid var(--line);
+  border-radius:var(--radius-lg);
+  background:var(--surface-raised);
+}
+.ranking-pos{
+  display:inline-grid;
+  place-items:center;
+  width:40px;
+  height:40px;
+  border-radius:12px;
+  background:var(--surface-muted);
+  color:var(--ink-soft);
+  font-weight:850;
+  font-variant-numeric:tabular-nums;
+}
+.ranking-row[data-top="1"] .ranking-pos{background:#f6c945;color:#3a2c00}
+.ranking-row[data-top="2"] .ranking-pos{background:#cdd4dc;color:#26303a}
+.ranking-row[data-top="3"] .ranking-pos{background:#e2a06a;color:#3a2200}
+.ranking-main{min-width:0}
+.ranking-name{font-weight:800;overflow-wrap:anywhere}
+.ranking-metrics{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px 14px;
+  margin-top:4px;
+  color:var(--ink-soft);
+  font-size:.82rem;
+  font-variant-numeric:tabular-nums;
+}
+.ranking-metrics b{color:var(--ink);font-weight:800}
+.ranking-side{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:6px;
+}
+.ranking-score{
+  font-size:1.15rem;
+  font-weight:850;
+  color:var(--accent-strong);
+  font-variant-numeric:tabular-nums;
+}
+.ranking-score span{font-size:.7rem;font-weight:750;color:var(--ink-soft)}
+.ranking-evo{font-size:.78rem;font-weight:800}
+.ranking-evo[data-dir="up"]{color:var(--success)}
+.ranking-evo[data-dir="down"]{color:var(--danger)}
+.ranking-evo[data-dir="flat"]{color:var(--ink-soft)}
+.ranking-spark{display:block;width:96px;height:28px;color:var(--accent)}
+@media (max-width:640px){
+  .ranking-row{grid-template-columns:auto 1fr}
+  .ranking-side{
+    grid-column:1 / -1;
+    flex-direction:row;
+    justify-content:space-between;
+    align-items:center;
+  }
+}
 .actions,.toolbar,.item-actions,.order-actions{
   display:flex;
   flex-wrap:wrap;
@@ -2378,6 +2659,10 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
         aria-controls="davez" aria-selected="false" tabindex="-1" data-tab="davez">
         <span aria-hidden="true">🚚</span> Da vez
       </button>
+      <button type="button" class="tab" id="tab-ranking" role="tab"
+        aria-controls="ranking" aria-selected="false" tabindex="-1" data-tab="ranking">
+        <span aria-hidden="true">🏆</span> Ranking
+      </button>
       <button type="button" class="tab" id="tab-relatorio" role="tab"
         aria-controls="relatorio" aria-selected="false" tabindex="-1" data-tab="relatorio">
         <span aria-hidden="true">📄</span> Relatórios
@@ -2566,6 +2851,38 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
       <h2 id="delivery-title">Em entrega</h2>
       <div id="dvEntrega" class="stack" role="list" aria-live="polite" aria-busy="false">
         <div class="state-row" role="listitem" data-state="empty">Nenhuma entrega carregada.</div>
+      </div>
+    </section>
+  </section>
+
+  <section id="ranking" class="section" role="tabpanel"
+    aria-labelledby="tab-ranking" tabindex="0" hidden>
+    <section class="card" aria-labelledby="ranking-title">
+      <div class="ranking-heading">
+        <div>
+          <p class="eyebrow">Desempenho</p>
+          <h2 id="ranking-title">Ranking de Motoboys</h2>
+          <p class="ranking-intro">
+            Classificação por entregas despachadas, com evolução por período.
+            Os dados começam a contar a partir de agora, a cada "Saiu para entrega".
+          </p>
+        </div>
+        <div class="ranking-filter" role="group" aria-label="Período do ranking">
+          <button type="button" class="ranking-period active" data-periodo="dia"
+            aria-pressed="true">Dia</button>
+          <button type="button" class="ranking-period" data-periodo="semana"
+            aria-pressed="false">Semana</button>
+          <button type="button" class="ranking-period" data-periodo="mes"
+            aria-pressed="false">Mês</button>
+        </div>
+      </div>
+
+      <p class="mini" id="rankingRange" role="status" aria-live="polite"></p>
+
+      <div id="rankingBox" class="ranking-list" role="region"
+        aria-label="Classificação dos motoboys" aria-live="polite"
+        aria-busy="true" tabindex="0">
+        <div class="state-row" data-state="loading">Carregando ranking…</div>
       </div>
     </section>
   </section>
@@ -2909,6 +3226,7 @@ function abrirAba(id, moveFocus=false){
 
   if (moveFocus) selectedTab.focus();
   if (id === 'davez') carregarDaVez(true);
+  if (id === 'ranking') carregarRanking(rankingPeriodoAtual);
   if (id === 'qrcode') initializePermanentQr();
   if (id === 'suporte') carregarLogs();
 }
@@ -4155,6 +4473,121 @@ async function carregarLogs(){
   }
 }
 
+let rankingPeriodoAtual = 'dia';
+
+function rankingLabelPeriodo(periodo){
+  if (periodo === 'semana') return 'últimos 7 dias';
+  if (periodo === 'mes') return 'últimos 30 dias';
+  return 'hoje';
+}
+
+function rankingEspera(segundos){
+  if (segundos === null || segundos === undefined || !Number.isFinite(Number(segundos))) {
+    return '—';
+  }
+  const total = Math.max(0, Math.round(Number(segundos)));
+  if (total < 60) return `${total}s`;
+  const min = Math.floor(total / 60);
+  const seg = total % 60;
+  return seg === 0 ? `${min}min` : `${min}min ${seg}s`;
+}
+
+function rankingSpark(serie){
+  const pontos = Array.isArray(serie) ? serie.map(Number).filter(Number.isFinite) : [];
+  if (pontos.length < 2) return '';
+  const largura = 96;
+  const altura = 28;
+  const max = Math.max(...pontos, 1);
+  const passo = largura / (pontos.length - 1);
+  const coords = pontos.map((valor, indice) => {
+    const x = Math.round(indice * passo);
+    const y = Math.round(altura - 3 - (valor / max) * (altura - 6));
+    return `${x},${y}`;
+  }).join(' ');
+  return `<svg class="ranking-spark" viewBox="0 0 ${largura} ${altura}" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round"
+      stroke-linejoin="round" role="img" aria-label="Evolução de entregas no período">
+      <polyline points="${coords}"></polyline>
+    </svg>`;
+}
+
+function rankingEvolucao(pct){
+  if (pct === null || pct === undefined) {
+    return '<span class="ranking-evo" data-dir="flat">— sem base</span>';
+  }
+  const valor = Number(pct);
+  const dir = valor > 0 ? 'up' : (valor < 0 ? 'down' : 'flat');
+  const seta = valor > 0 ? '▲' : (valor < 0 ? '▼' : '•');
+  return `<span class="ranking-evo" data-dir="${dir}">${seta} ${Math.abs(valor)}%</span>`;
+}
+
+async function carregarRanking(periodo){
+  rankingPeriodoAtual = ['dia', 'semana', 'mes'].includes(periodo) ? periodo : 'dia';
+  const box = document.getElementById('rankingBox');
+  if (!box) return;
+
+  document.querySelectorAll('.ranking-period').forEach(botao => {
+    const ativo = botao.dataset.periodo === rankingPeriodoAtual;
+    botao.classList.toggle('active', ativo);
+    botao.setAttribute('aria-pressed', ativo ? 'true' : 'false');
+  });
+
+  box.setAttribute('aria-busy', 'true');
+  const faixa = document.getElementById('rankingRange');
+
+  try {
+    const data = await fetchJsonAdmin(
+      'admin.php?action=ranking&periodo=' + encodeURIComponent(rankingPeriodoAtual)
+    );
+    const ranking = Array.isArray(data.ranking) ? data.ranking : [];
+
+    if (faixa) {
+      faixa.textContent = `Período: ${rankingLabelPeriodo(rankingPeriodoAtual)}`
+        + (data.inicio && data.fim ? ` (${data.inicio} a ${data.fim})` : '');
+    }
+
+    if (ranking.length === 0) {
+      box.innerHTML = renderState(
+        'Nenhuma entrega registrada neste período. O ranking preenche conforme os despachos acontecem.'
+      );
+      return;
+    }
+
+    box.innerHTML = ranking.map((item, indice) => {
+      const posicao = indice + 1;
+      const media = Number(item.media_dia || 0);
+      return `
+        <article class="ranking-row" data-top="${posicao}" role="listitem">
+          <span class="ranking-pos">${posicao}</span>
+          <div class="ranking-main">
+            <div class="ranking-name">${escapeHtml(item.nome)}</div>
+            <div class="ranking-metrics">
+              <span><b>${escapeHtml(item.entregas)}</b> entregas</span>
+              <span><b>${escapeHtml(item.dias_ativos)}</b> dias ativos</span>
+              <span><b>${escapeHtml(media)}</b>/dia</span>
+              <span>espera <b>${escapeHtml(rankingEspera(item.espera_media_seg))}</b></span>
+            </div>
+          </div>
+          <div class="ranking-side">
+            ${rankingSpark(item.serie)}
+            <span class="ranking-score">${escapeHtml(item.pontuacao)} <span>pts</span></span>
+            ${rankingEvolucao(item.evolucao_pct)}
+          </div>
+        </article>
+      `;
+    }).join('');
+  } catch (error) {
+    if (!(error instanceof AdminAuthenticationRequiredError)) {
+      box.innerHTML = renderState(
+        error.message || 'Não foi possível carregar o ranking.',
+        'error'
+      );
+    }
+  } finally {
+    box.setAttribute('aria-busy', 'false');
+  }
+}
+
 async function abrirRelatorio(id){
   const box = document.getElementById('lastReportBox');
   box.setAttribute('aria-busy', 'true');
@@ -4303,6 +4736,9 @@ document.getElementById('btnClear').addEventListener('click', limpar);
 document.getElementById('btnRefreshDavez').addEventListener('click', ()=>carregarDaVez(true));
 const btnRefreshLogs = document.getElementById('btnRefreshLogs');
 if (btnRefreshLogs) btnRefreshLogs.addEventListener('click', carregarLogs);
+document.querySelectorAll('.ranking-period').forEach(botao => {
+  botao.addEventListener('click', () => carregarRanking(botao.dataset.periodo));
+});
 document.getElementById('manualForm').addEventListener('submit', event=>{
   event.preventDefault();
   addManual();
