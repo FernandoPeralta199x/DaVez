@@ -124,3 +124,56 @@ function log_event($label, $data = []) {
     FILE_APPEND | LOCK_EX
   );
 }
+
+/**
+ * Lê os eventos mais recentes já sanitizados, do mais novo para o mais antigo.
+ *
+ * Reaproveita a mesma resolução de caminho privado da escrita: o arquivo vive
+ * fora do web root e cada linha já passou por sanitize_log_data(), então não há
+ * dado pessoal, caminho ou detalhe interno para expor.
+ *
+ * @return list<array{time: string, label: string, data: array<string, mixed>}>
+ */
+function read_recent_log_events($limit = 100) {
+  $limit = is_int($limit) ? $limit : (int) $limit;
+  if ($limit < 1) {
+    $limit = 1;
+  }
+  if ($limit > 500) {
+    $limit = 500;
+  }
+
+  $file = resolve_private_log_file();
+  if ($file === null || !is_file($file)) {
+    return [];
+  }
+
+  $lines = @file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+  if ($lines === false) {
+    return [];
+  }
+
+  $recent = array_slice($lines, -$limit);
+  $events = [];
+
+  foreach ($recent as $line) {
+    $decoded = json_decode($line, true);
+    if (!is_array($decoded)) {
+      continue;
+    }
+
+    $events[] = [
+      'time' => isset($decoded['time']) && is_string($decoded['time'])
+        ? $decoded['time']
+        : '',
+      'label' => isset($decoded['label']) && is_string($decoded['label'])
+        ? $decoded['label']
+        : 'UNKNOWN_EVENT',
+      'data' => isset($decoded['data']) && is_array($decoded['data'])
+        ? $decoded['data']
+        : [],
+    ];
+  }
+
+  return array_reverse($events);
+}

@@ -184,4 +184,13 @@ assert.match(inlineScript, /_csrf:CSRF_TOKEN/);
 assert.match(inlineScript, /navigator\.clipboard\.writeText\(value\)/);
 assert.match(inlineScript, /openAdminDialog\(\{[\s\S]*?Emitir código de recovery\?/);
 
+// Painel de logs de erro/bug na aba Suporte.
+assert.match(interfaceSource, /id="support-logs-title">Logs de erros e bugs<\/h2>/);
+assert.match(interfaceSource, /id="supportLogBox"/);
+assert.match(interfaceSource, /id="btnRefreshLogs"/);
+assert.match(interfaceSource, /class="support-logs-icon"/);
+assert.match(inlineScript, /async function carregarLogs\(\)/);
+assert.match(inlineScript, /admin\.php\?action=logs/);
+assert.match(inlineScript, /if \(id === 'suporte'\) carregarLogs\(\)/);
+
 process.stdout.write("admin_interface_contract: OK\n");

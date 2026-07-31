@@ -6,6 +6,7 @@ require_once __DIR__ . '/src/Domain/QueueStateChanged.php';
 require_once __DIR__ . '/src/Domain/QueueReorder.php';
 require_once __DIR__ . '/src/Domain/ReportSnapshot.php';
 require_once __DIR__ . '/src/Database/bootstrap.php';
+require_once __DIR__ . '/log.php';
 davez_install_safe_exception_handler();
 
 date_default_timezone_set('America/Sao_Paulo');
@@ -257,7 +258,8 @@ $readActions = [
   'metrics',
   'lista',
   'listar_relatorios',
-  'ver_relatorio'
+  'ver_relatorio',
+  'logs'
 ];
 
 if ($action !== '') {
@@ -343,6 +345,15 @@ if ($action === "listar_relatorios") {
     while ($row = $r->fetch_assoc()) $out[] = $row;
   }
   json_out($out);
+}
+
+if ($action === "logs") {
+  // Somente o log de eventos privado, já sanitizado. Nunca o log legado com
+  // dados pessoais nem o error_log bruto do PHP.
+  json_out([
+    'ok' => true,
+    'eventos' => read_recent_log_events(100),
+  ]);
 }
 
 if ($action === "ver_relatorio") {
@@ -1869,6 +1880,26 @@ button:disabled{cursor:not-allowed;opacity:.48}
   margin:0;
   color:var(--ink-soft);
 }
+.support-logs-heading{
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+.support-logs-icon{
+  display:inline-grid;
+  place-items:center;
+  width:56px;
+  height:56px;
+  flex:0 0 auto;
+  border-radius:16px;
+  color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 14%,transparent);
+  border:1px solid color-mix(in srgb,var(--accent) 34%,var(--line));
+}
+#supportLogBox{
+  max-height:min(52vh,420px);
+  overflow-y:auto;
+}
 .support-grid{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
@@ -2620,6 +2651,48 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
         Para sua segurança, não envie senhas, códigos individuais, tokens ou dados pessoais desnecessários.
       </p>
     </section>
+
+    <section class="card support-panel" aria-labelledby="support-logs-title">
+      <div class="support-heading">
+        <div class="support-logs-heading">
+          <span class="support-logs-icon" aria-hidden="true">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+              stroke-linejoin="round" role="img"
+              aria-label="Ícone de registro de erros">
+              <path d="M9 9a3 3 0 0 1 6 0v1"></path>
+              <path d="M7.5 11.5h9v3a4.5 4.5 0 0 1-9 0v-3z"></path>
+              <path d="M12 11.5v8"></path>
+              <path d="M7.5 13.5h-3"></path>
+              <path d="M16.5 13.5h3"></path>
+              <path d="M8 17.5l-2.5 1.5"></path>
+              <path d="M16 17.5l2.5 1.5"></path>
+              <path d="M8 8L6 6.5"></path>
+              <path d="M16 8l2-1.5"></path>
+              <path d="M4 20L20 4"></path>
+            </svg>
+          </span>
+          <div>
+            <p class="eyebrow">Diagnóstico</p>
+            <h2 id="support-logs-title">Logs de erros e bugs</h2>
+          </div>
+        </div>
+        <button type="button" class="support-action" id="btnRefreshLogs">
+          <span>Atualizar</span>
+          <span aria-hidden="true">↻</span>
+        </button>
+      </div>
+
+      <p class="support-intro">
+        Últimos eventos registrados pelo sistema, do mais recente ao mais antigo. Sem dados pessoais: apenas rótulo do evento, horário e métricas operacionais.
+      </p>
+
+      <div id="supportLogBox" class="report-list" role="region"
+        aria-label="Registros de erro e diagnóstico do sistema"
+        aria-live="polite" aria-busy="false" tabindex="0">
+        <div class="state-row" data-state="loading">Carregando registros…</div>
+      </div>
+    </section>
   </section>
 </main>
 
@@ -2787,6 +2860,7 @@ function abrirAba(id, moveFocus=false){
   if (moveFocus) selectedTab.focus();
   if (id === 'davez') carregarDaVez(true);
   if (id === 'qrcode') initializePermanentQr();
+  if (id === 'suporte') carregarLogs();
 }
 
 function escapeHtml(str){
@@ -4027,6 +4101,45 @@ async function carregarRelatorios(){
   }
 }
 
+async function carregarLogs(){
+  const box = document.getElementById('supportLogBox');
+  if (!box) return;
+  box.setAttribute('aria-busy', 'true');
+  try {
+    const data = await fetchJsonAdmin("admin.php?action=logs");
+    const eventos = Array.isArray(data.eventos) ? data.eventos : [];
+    if (eventos.length === 0) {
+      box.innerHTML = renderState('Nenhum registro de erro até agora.');
+      return;
+    }
+
+    box.innerHTML = eventos.map(ev => {
+      const dados = ev && ev.data && typeof ev.data === 'object' ? ev.data : {};
+      const metricas = Object.keys(dados)
+        .map(chave => `${escapeHtml(chave)}: ${escapeHtml(dados[chave])}`)
+        .join(' | ');
+      return `
+        <article class="report-item">
+          <div class="report-copy">
+            <b>${escapeHtml(ev.label || 'UNKNOWN_EVENT')}</b>
+            <div class="mini">${escapeHtml(ev.time || '')}</div>
+            ${metricas ? `<div class="mini">${metricas}</div>` : ''}
+          </div>
+        </article>
+      `;
+    }).join('');
+  } catch (error) {
+    if (!(error instanceof AdminAuthenticationRequiredError)) {
+      box.innerHTML = renderState(
+        error.message || 'Não foi possível carregar os registros.',
+        'error'
+      );
+    }
+  } finally {
+    box.setAttribute('aria-busy', 'false');
+  }
+}
+
 async function abrirRelatorio(id){
   const box = document.getElementById('lastReportBox');
   box.setAttribute('aria-busy', 'true');
@@ -4174,6 +4287,7 @@ document.getElementById('btnCopyPublicUrl').addEventListener('click', copyPublic
 document.getElementById('btnShowManual').addEventListener('click', toggleManualBox);
 document.getElementById('btnClear').addEventListener('click', limpar);
 document.getElementById('btnRefreshDavez').addEventListener('click', ()=>carregarDaVez(true));
+document.getElementById('btnRefreshLogs').addEventListener('click', carregarLogs);
 document.getElementById('manualForm').addEventListener('submit', event=>{
   event.preventDefault();
   addManual();
