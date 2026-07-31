@@ -26,6 +26,7 @@ $releaseFiles = @(
     'admin.php',
     'checkin.php',
     'config.example.php',
+    'database/schema.sql',
     'index.html',
     'log.php',
     'manifest.json',
@@ -55,7 +56,13 @@ foreach ($relativePath in $releaseFiles) {
         throw "Arquivo obrigatório ausente: $relativePath"
     }
 
-    Copy-Item -LiteralPath $source -Destination (Join-Path $stageRoot $relativePath)
+    $destination = Join-Path $stageRoot $relativePath
+    $destinationParent = Split-Path -Parent $destination
+    if (-not (Test-Path -LiteralPath $destinationParent)) {
+        New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
+    }
+
+    Copy-Item -LiteralPath $source -Destination $destination
 }
 
 foreach ($relativePath in $releaseDirectories) {
