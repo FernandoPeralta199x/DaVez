@@ -2385,6 +2385,7 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
         <button type="button" class="btn-secondary" id="btnShowManual"
           aria-expanded="false" aria-controls="manualBox">Adicionar manualmente</button>
         <button type="button" class="btn-clear" id="btnClear">Limpar lista e salvar relatório</button>
+        <button type="button" class="btn-primary" id="btnIssueCheckinTicket">Gerar código/QR individual</button>
       </div>
       <p><small class="mini">Atualização automática a cada 12 segundos. O ciclo operacional vira às 06:00.</small></p>
     </section>
@@ -2548,13 +2549,11 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
           <p class="eyebrow">Acesso público v2</p>
           <h2 id="individual-codes-title">Código e QR individual</h2>
           <p>
-            Gere um acesso de uso único para um novo check-in. O código digitável
-            continua disponível como alternativa à leitura do QR.
+            Use o botão <strong>Gerar código/QR individual</strong> na barra de
+            ações da aba Chamada. O código emitido aparece aqui, com o QR e o
+            código digitável como alternativa à leitura.
           </p>
         </div>
-        <button type="button" class="btn-primary" id="btnIssueCheckinTicket">
-          Gerar código/QR individual
-        </button>
       </div>
 
       <div class="qr-empty-state" id="individualQrEmpty">
