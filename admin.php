@@ -1647,6 +1647,24 @@ button:disabled{cursor:not-allowed;opacity:.48}
 .ticket-result p{margin:5px 0;color:#c4d2cd}
 .ticket-actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}
 .ticket-actions button{flex:1;min-width:160px}
+/* Painel do codigo individual, agora inline na aba Chamada. */
+#individualTicketCard{
+  border-color:color-mix(in srgb,var(--accent) 30%,var(--line));
+}
+.ticket-result{
+  animation:ticketReveal .5s cubic-bezier(.32,.72,0,1) both;
+}
+@keyframes ticketReveal{
+  from{opacity:0;transform:translateY(10px)}
+  to{opacity:1;transform:translateY(0)}
+}
+#issuedAccessCode{
+  color:var(--accent);
+  padding:10px 14px;
+  border-radius:12px;
+  background:color-mix(in srgb,var(--accent) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--accent) 26%,transparent);
+}
 .qr-panel{
   border-color:color-mix(in srgb,var(--accent) 38%,var(--line));
 }
@@ -2390,6 +2408,68 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
       <p><small class="mini">Atualização automática a cada 12 segundos. O ciclo operacional vira às 06:00.</small></p>
     </section>
 
+    <section class="card ticket-panel" id="individualTicketCard"
+      aria-labelledby="individual-codes-title">
+      <div class="qr-section-heading">
+        <div>
+          <p class="eyebrow">Acesso público v2</p>
+          <h2 id="individual-codes-title">Código e QR individual</h2>
+          <p>
+            Cada clique em <strong>Gerar código/QR individual</strong> cria um
+            código de uso único. Gere um por motoboy e entregue na hora.
+          </p>
+        </div>
+      </div>
+
+      <div class="qr-empty-state" id="individualQrEmpty">
+        Nenhum código emitido ainda. Use <strong>Gerar código/QR individual</strong> na barra acima.
+      </div>
+
+      <div class="ticket-result qr-ticket-result" id="issuedTicketResult"
+        role="status" aria-live="polite" aria-atomic="true" tabindex="-1" hidden>
+        <div class="ticket-result-heading">
+          <div>
+            <span class="eyebrow">Código individual</span>
+            <strong id="issuedTicketPurpose">Código emitido</strong>
+          </div>
+          <span class="ticket-state" id="issuedTicketState" data-state="active">Ativo</span>
+        </div>
+
+        <div class="individual-qr-layout">
+          <div class="individual-qr-copy">
+            <output id="issuedAccessCode"></output>
+            <div class="ticket-validity">
+              <div>
+                <span>Válido até</span>
+                <time id="issuedTicketExpiry"></time>
+              </div>
+              <div>
+                <span>Tempo restante</span>
+                <strong id="issuedTicketCountdown">--:--</strong>
+              </div>
+            </div>
+            <p id="issuedTicketWarning"></p>
+          </div>
+
+          <figure class="qr-figure individual-qr-figure">
+            <div class="qr-frame">
+              <canvas class="qr-canvas" id="individualQrCanvas" width="640" height="640"
+                role="img" aria-label="QR Code individual ainda não emitido">
+                Seu navegador não conseguiu exibir o QR Code individual.
+              </canvas>
+            </div>
+            <figcaption>Peça ao motoboy para ler este QR ou digitar o código.</figcaption>
+          </figure>
+        </div>
+
+        <div class="ticket-actions">
+          <button type="button" class="btn-primary" id="btnCopyTicket">Copiar código</button>
+          <button type="button" class="btn-secondary" id="btnRefreshTicket">Atualizar (novo código)</button>
+          <button type="button" class="btn-secondary" id="btnHideTicket">Ocultar código</button>
+        </div>
+      </div>
+    </section>
+
     <section class="card hidden" id="manualBox" aria-labelledby="manual-title">
       <h2 id="manual-title">Adicionar motoboy manualmente</h2>
       <p><small class="mini">Use este fluxo quando o check-in pelo dispositivo não estiver disponível.</small></p>
@@ -2539,69 +2619,6 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
           <p class="mini" id="permanentQrState" role="status" aria-live="polite">
             Preparando QR permanente…
           </p>
-        </div>
-      </div>
-    </section>
-
-    <section class="card ticket-panel" aria-labelledby="individual-codes-title">
-      <div class="qr-section-heading">
-        <div>
-          <p class="eyebrow">Acesso público v2</p>
-          <h2 id="individual-codes-title">Código e QR individual</h2>
-          <p>
-            Use o botão <strong>Gerar código/QR individual</strong> na barra de
-            ações da aba Chamada. O código emitido aparece aqui, com o QR e o
-            código digitável como alternativa à leitura.
-          </p>
-        </div>
-      </div>
-
-      <div class="qr-empty-state" id="individualQrEmpty">
-        Nenhum código individual foi emitido nesta sessão administrativa.
-      </div>
-
-      <div class="ticket-result qr-ticket-result" id="issuedTicketResult"
-        role="status" aria-live="polite" aria-atomic="true" tabindex="-1" hidden>
-        <div class="ticket-result-heading">
-          <div>
-            <span class="eyebrow">Código individual</span>
-            <strong id="issuedTicketPurpose">Código emitido</strong>
-          </div>
-          <span class="ticket-state" id="issuedTicketState" data-state="active">Ativo</span>
-        </div>
-
-        <div class="individual-qr-layout">
-          <div class="individual-qr-copy">
-            <output id="issuedAccessCode"></output>
-            <div class="ticket-validity">
-              <div>
-                <span>Válido até</span>
-                <time id="issuedTicketExpiry"></time>
-              </div>
-              <div>
-                <span>Tempo restante</span>
-                <strong id="issuedTicketCountdown">--:--</strong>
-              </div>
-            </div>
-            <p id="issuedTicketWarning"></p>
-          </div>
-
-          <figure class="qr-figure individual-qr-figure">
-            <div class="qr-frame">
-              <canvas class="qr-canvas" id="individualQrCanvas" width="640" height="640"
-                role="img" aria-label="QR Code individual ainda não emitido">
-                Seu navegador não conseguiu exibir o QR Code individual.
-              </canvas>
-            </div>
-            <figcaption>O endereço com o código é removido da barra após a leitura.</figcaption>
-          </figure>
-        </div>
-
-        <div class="ticket-actions">
-          <button type="button" class="btn-primary" id="btnCopyTicket">Copiar código</button>
-          <button type="button" class="btn-secondary" id="btnDownloadIndividualQr">Baixar QR</button>
-          <button type="button" class="btn-secondary" id="btnPrintIndividualQr">Imprimir QR</button>
-          <button type="button" class="btn-secondary" id="btnHideTicket">Ocultar código</button>
         </div>
       </div>
     </section>
@@ -3250,10 +3267,7 @@ const TICKET_STATE_LABELS = Object.freeze({
 function updateTicketActionAvailability(){
   const hasTicket = currentIssuedTicket !== null;
   const active = hasTicket && currentIssuedTicket.state === 'active';
-  const qrReady = active && currentIssuedTicket.qrReady === true;
   document.getElementById('btnCopyTicket').disabled = !active;
-  document.getElementById('btnDownloadIndividualQr').disabled = !qrReady;
-  document.getElementById('btnPrintIndividualQr').disabled = !qrReady;
 }
 
 function setIssuedTicketState(state){
@@ -3355,7 +3369,7 @@ function showIssuedTicket(data, purposeLabel){
     qrReady
   };
 
-  abrirAba('qrcode', false);
+  // O botao e o resultado vivem na mesma aba (Chamada); nao trocamos de aba.
   const expiryText = expiry.toLocaleString('pt-BR', {
     dateStyle:'short',
     timeStyle:'short'
@@ -3513,38 +3527,6 @@ async function copyIssuedTicket(){
     code,
     document.getElementById('issuedAccessCode'),
     'Código copiado. Compartilhe-o somente com o destinatário.'
-  );
-}
-
-function downloadIndividualQr(){
-  if (
-    !currentIssuedTicket
-    || currentIssuedTicket.state !== 'active'
-    || !currentIssuedTicket.qrReady
-  ) {
-    showToast('Nenhum QR individual ativo disponível.', false);
-    return;
-  }
-  downloadQrCanvas(
-    document.getElementById('individualQrCanvas'),
-    'davez-acesso-individual.png'
-  );
-}
-
-function printIndividualQr(){
-  if (
-    !currentIssuedTicket
-    || currentIssuedTicket.state !== 'active'
-    || !currentIssuedTicket.qrReady
-  ) {
-    showToast('Nenhum QR individual ativo disponível.', false);
-    return;
-  }
-  printQrCanvas(
-    document.getElementById('individualQrCanvas'),
-    'Acesso individual DaVez',
-    currentIssuedTicket.code,
-    `Uso único. Válido até ${currentIssuedTicket.expiresAt.toLocaleString('pt-BR')}.`
   );
 }
 
@@ -4277,8 +4259,7 @@ document.querySelector('.tabs').addEventListener('keydown', event=>{
 document.getElementById('btnToggle').addEventListener('click', toggleChamada);
 document.getElementById('btnIssueCheckinTicket').addEventListener('click', issueCheckinTicket);
 document.getElementById('btnCopyTicket').addEventListener('click', copyIssuedTicket);
-document.getElementById('btnDownloadIndividualQr').addEventListener('click', downloadIndividualQr);
-document.getElementById('btnPrintIndividualQr').addEventListener('click', printIndividualQr);
+document.getElementById('btnRefreshTicket').addEventListener('click', issueCheckinTicket);
 document.getElementById('btnHideTicket').addEventListener('click', hideIssuedTicket);
 document.getElementById('btnDownloadPermanentQr').addEventListener('click', downloadPermanentQr);
 document.getElementById('btnPrintPermanentQr').addEventListener('click', printPermanentQr);

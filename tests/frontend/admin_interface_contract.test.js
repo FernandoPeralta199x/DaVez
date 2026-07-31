@@ -165,9 +165,12 @@ assert.match(interfaceSource, /id="issuedTicketCountdown"/);
 assert.match(interfaceSource, /id="issuedTicketState" data-state="active">Ativo/);
 assert.match(interfaceSource, /id="individualQrCanvas"/);
 assert.match(interfaceSource, /id="btnCopyTicket"/);
-assert.match(interfaceSource, /id="btnDownloadIndividualQr"/);
-assert.match(interfaceSource, /id="btnPrintIndividualQr"/);
+assert.match(interfaceSource, /id="btnRefreshTicket"/);
 assert.match(interfaceSource, /id="btnHideTicket"/);
+// O painel de codigo individual mora na aba Chamada, nao na aba QR Code.
+assert.match(interfaceSource, /id="individualTicketCard"/);
+assert.doesNotMatch(interfaceSource, /id="btnDownloadIndividualQr"/);
+assert.doesNotMatch(interfaceSource, /id="btnPrintIndividualQr"/);
 assert.doesNotMatch(interfaceSource, /QR externo não faz parte deste lote/);
 assert.match(inlineScript, /function getPublicAppUrl\(\)/);
 assert.match(inlineScript, /function getIndividualAccessUrl\(accessCode\)/);
