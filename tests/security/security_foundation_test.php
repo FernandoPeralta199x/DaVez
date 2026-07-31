@@ -60,6 +60,44 @@ security_foundation_assert(
     davez_authenticated_admin_identity() === ['role' => 'admin'],
     'A identidade não foi derivada da sessão.'
 );
+security_foundation_assert(
+    davez_admin_can_view_logs(),
+    'O dono deveria ter acesso aos logs.'
+);
+
+// Operador (cliente): opera o painel, mas não vê os logs.
+putenv('ADMIN_OPERATORS=' . json_encode([
+    [
+        'user' => 'cliente_teste',
+        'hash' => password_hash('Senha-Operador-1!', PASSWORD_DEFAULT),
+    ],
+]));
+security_foundation_assert(
+    davez_admin_authenticate('cliente_teste', 'Senha-Operador-1!'),
+    'O operador com credenciais válidas não foi autenticado.'
+);
+security_foundation_assert(
+    davez_authenticated_admin_identity() === ['role' => 'operator'],
+    'O operador não recebeu o papel esperado.'
+);
+security_foundation_assert(
+    davez_admin_session_is_authenticated(),
+    'A sessão do operador deveria ser válida.'
+);
+security_foundation_assert(
+    !davez_admin_can_view_logs(),
+    'O operador não pode ter acesso aos logs.'
+);
+security_foundation_assert(
+    !davez_admin_authenticate('cliente_teste', 'senha-errada'),
+    'Senha inválida de operador foi aceita.'
+);
+// Restaura o dono para os próximos asserts e limpa a configuração de teste.
+security_foundation_assert(
+    davez_admin_authenticate('operador', $password),
+    'A reautenticação do dono falhou.'
+);
+putenv('ADMIN_OPERATORS');
 
 $cookie = session_get_cookie_params();
 security_foundation_assert(

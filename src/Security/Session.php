@@ -3,6 +3,14 @@
 declare(strict_types=1);
 
 /**
+ * Papéis administrativos válidos.
+ *
+ * - admin: dono, com acesso total, inclusive aos logs;
+ * - operator: cliente, opera o painel sem acesso aos logs.
+ */
+const DAVEZ_ADMIN_ROLES = ['admin', 'operator'];
+
+/**
  * Proxies autorizados a informar o protocolo original da requisição.
  *
  * Sem APP_TRUSTED_PROXIES nenhum cabeçalho encaminhado é considerado. A
@@ -313,13 +321,13 @@ function davez_admin_session_is_authenticated(): bool
 
     $_SESSION['davez_admin_auth']['last_activity'] = $now;
 
-    return ($auth['role'] ?? null) === 'admin';
+    return in_array($auth['role'] ?? null, DAVEZ_ADMIN_ROLES, true);
 }
 
 /**
  * A identidade administrativa é derivada exclusivamente da sessão.
  *
- * @return array{role: 'admin'}|null
+ * @return array{role: 'admin'|'operator'}|null
  */
 function davez_authenticated_admin_identity(): ?array
 {
@@ -327,7 +335,11 @@ function davez_authenticated_admin_identity(): ?array
         return null;
     }
 
-    return ['role' => 'admin'];
+    $role = $_SESSION['davez_admin_auth']['role'] ?? null;
+
+    return in_array($role, DAVEZ_ADMIN_ROLES, true)
+        ? ['role' => $role]
+        : null;
 }
 
 function davez_destroy_secure_session(): void

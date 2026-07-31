@@ -172,6 +172,7 @@ $operationalContext = new \DaVez\Domain\OperationalContext(
 $operationalStart = $operationalContext->startSql();
 $operationalEnd = $operationalContext->endSql();
 $operationalDate = $operationalContext->date();
+$adminCanViewLogs = davez_admin_can_view_logs();
 
 /* ===== configurações operacionais somente leitura ===== */
 $settingsResult = $conn->query(
@@ -348,6 +349,15 @@ if ($action === "listar_relatorios") {
 }
 
 if ($action === "logs") {
+  // Apenas o dono (papel admin) enxerga os logs. Operadores/clientes não.
+  if (!$adminCanViewLogs) {
+    davez_send_error(
+      'forbidden',
+      'Este usuário não tem acesso aos logs.',
+      403
+    );
+  }
+
   // Somente o log de eventos privado, já sanitizado. Nunca o log legado com
   // dados pessoais nem o error_log bruto do PHP.
   json_out([
@@ -2690,6 +2700,7 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
       </p>
     </section>
 
+    <?php if ($adminCanViewLogs): ?>
     <section class="card support-panel" aria-labelledby="support-logs-title">
       <div class="support-heading">
         <div class="support-logs-heading">
@@ -2731,6 +2742,7 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
         <div class="state-row" data-state="loading">Carregando registros…</div>
       </div>
     </section>
+    <?php endif; ?>
   </section>
 </main>
 
@@ -4289,7 +4301,8 @@ document.getElementById('btnCopyPublicUrl').addEventListener('click', copyPublic
 document.getElementById('btnShowManual').addEventListener('click', toggleManualBox);
 document.getElementById('btnClear').addEventListener('click', limpar);
 document.getElementById('btnRefreshDavez').addEventListener('click', ()=>carregarDaVez(true));
-document.getElementById('btnRefreshLogs').addEventListener('click', carregarLogs);
+const btnRefreshLogs = document.getElementById('btnRefreshLogs');
+if (btnRefreshLogs) btnRefreshLogs.addEventListener('click', carregarLogs);
 document.getElementById('manualForm').addEventListener('submit', event=>{
   event.preventDefault();
   addManual();

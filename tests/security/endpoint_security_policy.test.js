@@ -92,6 +92,16 @@ requirePattern(
 );
 requirePattern(
   admin,
+  /davez_admin_can_view_logs\(\)/,
+  "admin.php não restringe os logs por papel do usuário."
+);
+requirePattern(
+  admin,
+  /\$adminCanViewLogs[\s\S]*?forbidden/,
+  "o endpoint de logs não bloqueia quem não pode vê-los."
+);
+requirePattern(
+  admin,
   /X-CSRF-Token/g,
   "O JavaScript administrativo não envia CSRF."
 );
