@@ -8,8 +8,9 @@ require_once dirname(__DIR__) . '/Domain/OperationalContext.php';
 
 use DaVez\Domain\OperationalContext;
 
-const DAVEZ_PUBLIC_TICKET_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-const DAVEZ_PUBLIC_TICKET_LENGTH = 16;
+const DAVEZ_PUBLIC_TICKET_DIGITS = '0123456789';
+const DAVEZ_PUBLIC_TICKET_LETTERS = 'abcdefghijklmnopqrstuvwxyz';
+const DAVEZ_PUBLIC_TICKET_LENGTH = 8;
 const DAVEZ_PUBLIC_TICKET_TTL_SECONDS = 600;
 const DAVEZ_PUBLIC_SESSION_BYTES = 32;
 const DAVEZ_PUBLIC_SESSION_MAX_SECONDS = 86400;
@@ -17,25 +18,29 @@ const DAVEZ_PUBLIC_IDENTITY_COOKIE_HTTPS = '__Host-davez_public';
 const DAVEZ_PUBLIC_IDENTITY_COOKIE_LOCAL = 'davez_public_dev';
 
 /**
- * Gera 16 caracteres Crockford Base32 e os apresenta em quatro grupos.
+ * Gera um código curto: 4 dígitos, hífen e 4 letras minúsculas
+ * (ex.: 1166-aabb). Fácil de ditar e digitar.
  */
 function davez_public_ticket_code(): string
 {
-    $characters = '';
-
-    for ($index = 0; $index < DAVEZ_PUBLIC_TICKET_LENGTH; $index++) {
-        $randomByte = ord(random_bytes(1));
-        $characters .= DAVEZ_PUBLIC_TICKET_ALPHABET[$randomByte & 31];
+    $digits = '';
+    for ($index = 0; $index < 4; $index++) {
+        $digits .= DAVEZ_PUBLIC_TICKET_DIGITS[random_int(0, 9)];
     }
 
-    return implode('-', str_split($characters, 4));
+    $letters = '';
+    for ($index = 0; $index < 4; $index++) {
+        $letters .= DAVEZ_PUBLIC_TICKET_LETTERS[random_int(0, 25)];
+    }
+
+    return $digits . '-' . $letters;
 }
 
 /**
- * Normaliza separadores e os aliases Crockford O/I/L.
+ * Normaliza separadores e caixa. Exige 4 dígitos seguidos de 4 letras
+ * minúsculas (ex.: " 1166 - AAbb " -> "1166aabb").
  *
- * @throws InvalidArgumentException quando o código não possui exatamente
- *         16 caracteres Crockford Base32.
+ * @throws InvalidArgumentException quando o código não segue o formato.
  */
 function davez_normalize_public_ticket_code(string $code): string
 {
@@ -45,15 +50,11 @@ function davez_normalize_public_ticket_code(string $code): string
         throw new InvalidArgumentException('Código de acesso inválido.');
     }
 
-    $normalized = strtr(strtoupper($compact), [
-        'O' => '0',
-        'I' => '1',
-        'L' => '1',
-    ]);
+    $normalized = strtolower($compact);
 
     if (
         strlen($normalized) !== DAVEZ_PUBLIC_TICKET_LENGTH
-        || preg_match('/\A[0-9A-HJKMNP-TV-Z]{16}\z/', $normalized) !== 1
+        || preg_match('/\A[0-9]{4}[a-z]{4}\z/', $normalized) !== 1
     ) {
         throw new InvalidArgumentException('Código de acesso inválido.');
     }

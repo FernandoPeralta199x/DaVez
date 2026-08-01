@@ -79,8 +79,8 @@ try {
     $accessCode = davez_input_string(
         $_POST,
         'access_code',
-        16,
-        19
+        8,
+        9
     );
     $latitude = davez_input_float($_POST, 'lat', -90, 90);
     $longitude = davez_input_float($_POST, 'lng', -180, 180);

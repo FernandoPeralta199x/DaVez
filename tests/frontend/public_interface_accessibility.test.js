@@ -80,7 +80,7 @@ requirePattern(
 requirePattern(/<label for="nome">/, "o campo de nome deve ter label real");
 requirePattern(/<label for="accessCode">Código individual<\/label>/, "o código individual deve ter label real");
 requirePattern(/id="nome"[\s\S]*?aria-describedby="nomeHint"[\s\S]*?required/, "nome deve ter ajuda associada e ser obrigatório");
-requirePattern(/id="accessCode"[\s\S]*?autocomplete="one-time-code"[\s\S]*?maxlength="19"[\s\S]*?aria-describedby="accessCodeHint"[\s\S]*?required/, "código individual deve ter ajuda, autocomplete e limite corretos");
+requirePattern(/id="accessCode"[\s\S]*?autocomplete="one-time-code"[\s\S]*?maxlength="9"[\s\S]*?aria-describedby="accessCodeHint"[\s\S]*?required/, "código individual deve ter ajuda, autocomplete e limite corretos");
 requirePattern(/id="btnRecover"[\s\S]*?aria-describedby="recoverHint"/, "recuperação deve ser acessível");
 requirePattern(
   /<h2 id="pwaTitle" class="pwa-title">Instalar aplicativo<\/h2>/,

@@ -29,7 +29,7 @@ for (const contract of [
 assert.match(html, /<label for="accessCode">Código individual<\/label>/);
 assert.match(
   html,
-  /id="accessCode"[\s\S]*?name="access_code"[\s\S]*?autocomplete="one-time-code"[\s\S]*?maxlength="19"/
+  /id="accessCode"[\s\S]*?name="access_code"[\s\S]*?autocomplete="one-time-code"[\s\S]*?maxlength="9"/
 );
 assert.match(html, /id="btnRecover"[\s\S]*?onclick="recoverAccess\(\)"/);
 assert.match(script, /form\.append\("access_code", accessCode\)/);

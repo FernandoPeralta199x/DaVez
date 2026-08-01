@@ -78,7 +78,8 @@ O administrador emitirá um ticket para uma finalidade específica:
 
 Características implementadas:
 
-- código Crockford Base32 individual de 16 caracteres, digitável;
+- código individual curto de 8 caracteres no formato `NNNN-llll`
+  (4 dígitos + 4 letras minúsculas, ex.: `1166-aabb`), digitável;
 - QR individual transporta a URL pública com o mesmo código no fragmento
   `#access_code`; o fragmento é removido do endereço pelo frontend antes de
   qualquer requisição;

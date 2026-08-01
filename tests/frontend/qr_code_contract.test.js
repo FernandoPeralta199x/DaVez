@@ -54,7 +54,7 @@ assert.equal(typeof createQr, "function");
 
 for (const payload of [
   "https://davez.example/",
-  "https://davez.example/#access_code=0123-4567-89AB-CDEF",
+  "https://davez.example/#access_code=1166-aabb",
 ]) {
   const qr = createQr(0, "M");
   qr.addData(payload);

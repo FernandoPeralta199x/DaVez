@@ -49,30 +49,25 @@ putenv('PUBLIC_TICKET_HMAC_KEY=' . $syntheticHmacKey);
 for ($attempt = 0; $attempt < 128; $attempt++) {
     $ticketCode = davez_public_ticket_code();
     public_identity_assert(
-        preg_match(
-            '/\A[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){3}\z/',
-            $ticketCode
-        ) === 1,
-        'O ticket não possui 16 caracteres Crockford agrupados.'
+        preg_match('/\A[0-9]{4}-[a-z]{4}\z/', $ticketCode) === 1,
+        'O ticket não segue o formato 4 dígitos + 4 letras minúsculas.'
     );
 }
 
 public_identity_assert(
-    davez_normalize_public_ticket_code(
-        ' o1li - 2345 - 6789 - abcd '
-    ) === '011123456789ABCD',
-    'A normalização Crockford não tratou separadores e aliases.'
+    davez_normalize_public_ticket_code(' 1166 - AAbb ') === '1166aabb',
+    'A normalização não tratou separadores e caixa.'
 );
 public_identity_expect_exception(
     static function (): void {
-        davez_normalize_public_ticket_code('UUUU-UUUU-UUUU-UUUU');
+        davez_normalize_public_ticket_code('aabb-1166');
     },
     InvalidArgumentException::class,
-    'Um caractere fora do alfabeto Crockford foi aceito.'
+    'Um código fora do formato (letras antes dos dígitos) foi aceito.'
 );
 
 $ticketHash = davez_public_ticket_hash(
-    '0111-2345-6789-ABCD'
+    '1166-aabb'
 );
 public_identity_assert(
     strlen($ticketHash) === 32,
@@ -81,7 +76,7 @@ public_identity_assert(
 public_identity_assert(
     hash_equals(
         $ticketHash,
-        davez_public_ticket_hash('O1LI 2345 6789 abcd')
+        davez_public_ticket_hash(' 1166 AABB ')
     ),
     'Representações equivalentes do ticket produziram hashes diferentes.'
 );
@@ -89,7 +84,7 @@ public_identity_assert(
 putenv('PUBLIC_TICKET_HMAC_KEY=curta');
 public_identity_expect_exception(
     static function (): void {
-        davez_public_ticket_hash('0111-2345-6789-ABCD');
+        davez_public_ticket_hash('1166-aabb');
     },
     RuntimeException::class,
     'Uma chave HMAC com menos de 32 bytes foi aceita.'

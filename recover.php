@@ -58,8 +58,8 @@ try {
     $accessCode = davez_input_string(
         $_POST,
         'access_code',
-        16,
-        19
+        8,
+        9
     );
     $ticketHash = davez_public_ticket_hash($accessCode);
     $sessionToken = davez_public_session_token();

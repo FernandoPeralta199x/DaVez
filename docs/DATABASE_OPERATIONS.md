@@ -278,7 +278,7 @@ devem ser preparados fora do caminho de request.
 Base `0,0` ou raio menor ou igual a zero falham de forma fechada. Os dois fluxos
 de entrada usam o mesmo helper.
 
-O fluxo v2 usa ticket Crockford Base32 de uso único, HMAC no banco e sessão
+O fluxo v2 usa ticket curto (`NNNN-llll`, 4 dígitos + 4 letras) de uso único, HMAC no banco e sessão
 opaca armazenada somente como hash. `client_id` permanece nullable no schema
 para dados legados, mas não é aceito como identidade pelo check-in ou pela fila
 v2. Consulte `docs/PUBLIC_IDENTITY_V2.md`.

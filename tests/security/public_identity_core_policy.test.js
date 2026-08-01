@@ -19,7 +19,7 @@ const sessionMigration = read(
   "database/migrations/007_create_public_sessions.sql"
 );
 
-assert.match(identity, /DAVEZ_PUBLIC_TICKET_LENGTH\s*=\s*16/);
+assert.match(identity, /DAVEZ_PUBLIC_TICKET_LENGTH\s*=\s*8/);
 assert.match(identity, /DAVEZ_PUBLIC_TICKET_TTL_SECONDS\s*=\s*600/);
 assert.match(identity, /PUBLIC_TICKET_HMAC_KEY/);
 assert.match(identity, /hash_hmac\(\s*['"]sha256['"]/);

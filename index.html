@@ -1776,10 +1776,10 @@ button:disabled {
             id="accessCode"
             name="access_code"
             type="text"
-            placeholder="Digite seu código individual"
+            placeholder="Ex.: 1166-aabb"
             inputmode="text"
             autocomplete="one-time-code"
-            maxlength="19"
+            maxlength="9"
             aria-describedby="accessCodeHint"
             required
           />
@@ -1794,7 +1794,7 @@ button:disabled {
             </svg>
           </button>
         </div>
-        <span id="accessCodeHint" class="field-hint">Digite o código ou toque na câmera para ler o QR.</span>
+        <span id="accessCodeHint" class="field-hint">Formato 4 números + 4 letras (ex.: 1166-aabb). Ou toque na câmera para ler o QR.</span>
       </div>
 
       <button id="btn" type="button" onclick="checkin()" aria-describedby="geoHint">Fazer check-in</button>
@@ -2024,8 +2024,8 @@ function extractAccessCodeFromScan(text) {
   } catch (error) {
     // O QR pode conter só o código, sem ser uma URL.
   }
-  candidate = candidate.trim().toUpperCase();
-  return /^[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){3}$/.test(candidate)
+  candidate = candidate.trim().toLowerCase();
+  return /^[0-9]{4}-?[a-z]{4}$/.test(candidate)
     ? candidate
     : null;
 }
@@ -2141,9 +2141,9 @@ function applyAccessCodeFromFragment() {
 
   const accessCode = (fragmentParams.get("access_code") || "")
     .trim()
-    .toUpperCase();
+    .toLowerCase();
   if (
-    !/^[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){3}$/.test(accessCode)
+    !/^[0-9]{4}-?[a-z]{4}$/.test(accessCode)
   ) {
     setStatus(
       "O QR individual não contém um código válido. Solicite um novo código à equipe.",

@@ -643,8 +643,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
       $accessCode = davez_input_string(
         $input,
         'access_code',
-        16,
-        32
+        8,
+        12
       );
       $ticketStatus = davez_public_identity_store($conn)->findTicketStatus(
         davez_public_ticket_hash($accessCode),
