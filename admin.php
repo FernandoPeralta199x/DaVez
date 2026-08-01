@@ -3239,6 +3239,7 @@ function abrirAba(id, moveFocus=false){
   if (moveFocus) selectedTab.focus();
   if (id === 'davez') carregarDaVez(true);
   if (id === 'ranking') carregarRanking(rankingPeriodoAtual);
+  if (id === 'config') carregarConfig();
   if (id === 'qrcode') initializePermanentQr();
   if (id === 'suporte') carregarLogs();
 }
@@ -3413,6 +3414,19 @@ async function limpar(){
   }
 }
 
+async function carregarConfig(){
+  try {
+    const d = await fetchJsonAdmin("admin.php?action=dados");
+    document.getElementById('lat').value = d.lat_base ?? '';
+    document.getElementById('lng').value = d.lng_base ?? '';
+    document.getElementById('raio').value = d.raio ?? '';
+  } catch (error) {
+    if (!(error instanceof AdminAuthenticationRequiredError)) {
+      showToast(error.message || 'Não foi possível carregar as configurações.', false);
+    }
+  }
+}
+
 async function salvar(){
   const button = document.getElementById('btnSaveSettings');
   let f = new FormData();
@@ -3433,7 +3447,7 @@ async function salvar(){
       return;
     }
     showToast("Configurações salvas.", true);
-    await carregar();
+    await carregarConfig();
   } catch (error) {
     if (!(error instanceof AdminAuthenticationRequiredError)) {
       showToast(error.message || "Falha ao salvar configurações.", false);
@@ -4059,10 +4073,9 @@ async function carregar(){
   lista.setAttribute('aria-busy', 'true');
   try{
     const d = await fetchJsonAdmin("admin.php?action=dados");
-    document.getElementById('lat').value = d.lat_base || '';
-    document.getElementById('lng').value = d.lng_base || '';
-    document.getElementById('raio').value = d.raio || '';
-
+    // Não sobrescreve lat/lng/raio aqui: o polling de 12s apagaria o que o
+    // admin está digitando na aba Configurações. Esses campos são carregados
+    // por carregarConfig() ao abrir a aba e após salvar.
     atualizarStatusChamada(d);
     carregarMetrics();
 

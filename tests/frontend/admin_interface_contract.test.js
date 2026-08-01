@@ -73,6 +73,15 @@ assert.match(interfaceSource, /id="ranking-title">Ranking de Motoboys<\/h2>/);
 assert.match(interfaceSource, /id="rankingBox"/);
 assert.match(interfaceSource, /data-periodo="dia"[\s\S]*?data-periodo="semana"[\s\S]*?data-periodo="mes"/);
 assert.match(inlineScript, /async function carregarRanking\(/);
+// Regressão: o campo de configuração é carregado por carregarConfig() ao
+// abrir a aba/após salvar — não pelo polling de 12s (que apagaria a digitação).
+assert.match(inlineScript, /async function carregarConfig\(/);
+assert.match(inlineScript, /if \(id === 'config'\) carregarConfig\(\)/);
+assert.equal(
+  (inlineScript.match(/getElementById\('lat'\)\.value\s*=/g) || []).length,
+  1,
+  "o campo de latitude só pode ser preenchido em um lugar (carregarConfig), não no polling"
+);
 assert.match(inlineScript, /admin\.php\?action=ranking/);
 assert.match(inlineScript, /if \(id === 'ranking'\) carregarRanking/);
 assert.match(
