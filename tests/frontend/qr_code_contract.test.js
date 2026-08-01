@@ -82,7 +82,7 @@ assert.match(
 );
 assert.match(
   admin,
-  /davez_public_ticket_hash\(\$accessCode\)[\s\S]*?findTicketStatus|findTicketStatus\([\s\S]*?davez_public_ticket_hash\(\$accessCode\)/
+  /davez_public_ticket_hash\(\$accessCode\)[\s\S]*?findDailyCodeStatus|findDailyCodeStatus\([\s\S]*?davez_public_ticket_hash\(\$accessCode\)/
 );
 assert.match(admin, /publicUrl\.hash = new URLSearchParams/);
 assert.doesNotMatch(

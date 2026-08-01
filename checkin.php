@@ -84,7 +84,7 @@ try {
     );
     $latitude = davez_input_float($_POST, 'lat', -90, 90);
     $longitude = davez_input_float($_POST, 'lng', -180, 180);
-    $ticketHash = davez_public_ticket_hash($accessCode);
+    $codeHash = davez_public_ticket_hash($accessCode);
     $sessionToken = davez_public_session_token();
     $sessionHash = davez_public_session_hash($sessionToken);
     $sessionExpiresAt = davez_public_session_expires_at(
@@ -155,161 +155,207 @@ if (!$geofence['within']) {
 }
 
 $store = davez_public_identity_store($conn);
-$allocator = davez_atomic_order_allocator($conn);
-$loadedTicket = null;
+$runner = davez_locked_transaction_runner($conn);
 $checkinId = null;
+$resolvedName = $name;
 
 try {
-    $position = $allocator->allocateAndPersist(
+    $runner->run(
         'checkins:' . $operationalDate,
         static function () use (
             $conn,
             $store,
-            $ticketHash,
+            $codeHash,
             $operationalDate,
-            $now,
-            $name,
             $operationalStart,
             $operationalEnd,
-            &$loadedTicket
-        ): int {
-            $loadedTicket = $store->loadTicketForUpdate(
-                $ticketHash,
-                'checkin',
+            $now,
+            $name,
+            $sessionHash,
+            $sessionExpiresAt,
+            &$checkinId,
+            &$resolvedName
+        ): void {
+            $code = $store->loadDailyCodeForUpdate(
+                $codeHash,
                 $operationalDate,
                 $now
             );
 
-            if ($loadedTicket === null) {
+            if ($code === null) {
                 throw new DomainException('invalid_access_code');
             }
 
-            $duplicate = $conn->prepare(
-                'SELECT id
-                 FROM checkins
-                 WHERE LOWER(TRIM(nome))=LOWER(TRIM(?))
-                   AND data_hora >= ?
-                   AND data_hora < ?
-                 LIMIT 1
-                 FOR UPDATE'
-            );
-
-            if (!$duplicate) {
-                throw new RuntimeException(
-                    'Check-in indisponível para validação.'
+            if ($code['checkin_id'] === null) {
+                // Primeiro uso do código no dia: cria o check-in e ativa.
+                $duplicate = $conn->prepare(
+                    'SELECT id
+                     FROM checkins
+                     WHERE LOWER(TRIM(nome))=LOWER(TRIM(?))
+                       AND data_hora >= ?
+                       AND data_hora < ?
+                     LIMIT 1
+                     FOR UPDATE'
                 );
-            }
 
-            $duplicate->bind_param(
-                'sss',
-                $name,
-                $operationalStart,
-                $operationalEnd
-            );
+                if (!$duplicate) {
+                    throw new RuntimeException(
+                        'Check-in indisponível para validação.'
+                    );
+                }
 
-            if (!$duplicate->execute()) {
+                $duplicate->bind_param(
+                    'sss',
+                    $name,
+                    $operationalStart,
+                    $operationalEnd
+                );
+
+                if (!$duplicate->execute()) {
+                    $duplicate->close();
+                    throw new RuntimeException(
+                        'Check-in indisponível para validação.'
+                    );
+                }
+
+                $duplicate->store_result();
+                $alreadyExists = $duplicate->num_rows > 0;
                 $duplicate->close();
-                throw new RuntimeException(
-                    'Check-in indisponível para validação.'
+
+                if ($alreadyExists) {
+                    throw new DomainException('duplicate_name');
+                }
+
+                $maximum = $conn->prepare(
+                    'SELECT COALESCE(MAX(ordem), 0)
+                     FROM checkins
+                     WHERE data_hora >= ?
+                       AND data_hora < ?'
                 );
-            }
 
-            $duplicate->store_result();
-            $alreadyExists = $duplicate->num_rows > 0;
-            $duplicate->close();
+                if (!$maximum) {
+                    throw new RuntimeException(
+                        'Fila indisponível para ordenação.'
+                    );
+                }
 
-            if ($alreadyExists) {
-                throw new DomainException('duplicate_name');
-            }
-
-            $maximum = $conn->prepare(
-                'SELECT COALESCE(MAX(ordem), 0)
-                 FROM checkins
-                 WHERE data_hora >= ?
-                   AND data_hora < ?'
-            );
-
-            if (!$maximum) {
-                throw new RuntimeException(
-                    'Fila indisponível para ordenação.'
+                $maximum->bind_param(
+                    'ss',
+                    $operationalStart,
+                    $operationalEnd
                 );
-            }
 
-            $maximum->bind_param(
-                'ss',
-                $operationalStart,
-                $operationalEnd
-            );
+                if (!$maximum->execute()) {
+                    $maximum->close();
+                    throw new RuntimeException(
+                        'Fila indisponível para ordenação.'
+                    );
+                }
 
-            if (!$maximum->execute()) {
+                $maximumOrder = 0;
+                $maximum->bind_result($maximumOrder);
+                $maximum->fetch();
                 $maximum->close();
-                throw new RuntimeException(
-                    'Fila indisponível para ordenação.'
+                $order = (int) $maximumOrder + 1;
+
+                $insert = $conn->prepare(
+                    'INSERT INTO checkins
+                       (nome, data_hora, operational_date, ordem)
+                     VALUES (?, NOW(), ?, ?)'
                 );
-            }
 
-            $maximumOrder = 0;
-            $maximum->bind_result($maximumOrder);
-            $maximum->fetch();
-            $maximum->close();
+                if (!$insert) {
+                    throw new RuntimeException(
+                        'Check-in indisponível para inserção.'
+                    );
+                }
 
-            return (int) $maximumOrder;
-        },
-        static function (int $order) use (
-            $conn,
-            $store,
-            $name,
-            $operationalDate,
-            $now,
-            $sessionHash,
-            $sessionExpiresAt,
-            &$loadedTicket,
-            &$checkinId
-        ): void {
-            $insert = $conn->prepare(
-                'INSERT INTO checkins
-                   (nome, data_hora, operational_date, ordem)
-                 VALUES (?, NOW(), ?, ?)'
-            );
-
-            if (!$insert) {
-                throw new RuntimeException(
-                    'Check-in indisponível para inserção.'
+                $insert->bind_param(
+                    'ssi',
+                    $name,
+                    $operationalDate,
+                    $order
                 );
-            }
 
-            $insert->bind_param(
-                'ssi',
-                $name,
-                $operationalDate,
-                $order
-            );
+                if (!$insert->execute() || $insert->affected_rows !== 1) {
+                    $insert->close();
+                    throw new RuntimeException(
+                        'Check-in indisponível para inserção.'
+                    );
+                }
 
-            if (!$insert->execute() || $insert->affected_rows !== 1) {
+                $newCheckinId = (int) $conn->insert_id;
                 $insert->close();
-                throw new RuntimeException(
-                    'Check-in indisponível para inserção.'
+
+                if (
+                    !$store->activateDailyCode(
+                        (int) $code['id'],
+                        $newCheckinId,
+                        $now
+                    )
+                ) {
+                    throw new RuntimeException(
+                        'O código individual não pôde ser ativado.'
+                    );
+                }
+
+                $checkinId = $newCheckinId;
+                $resolvedName = $name;
+            } else {
+                // Re-login: o código já está vinculado a um check-in do dia.
+                $existingId = (int) $code['checkin_id'];
+                $lookup = $conn->prepare(
+                    'SELECT nome, COALESCE(is_closed, 0)
+                     FROM checkins
+                     WHERE id=?
+                       AND operational_date=?
+                     LIMIT 1
+                     FOR UPDATE'
                 );
-            }
 
-            $checkinId = (int) $conn->insert_id;
-            $insert->close();
+                if (!$lookup) {
+                    throw new RuntimeException(
+                        'Check-in indisponível para recuperação.'
+                    );
+                }
 
-            if (
-                !is_array($loadedTicket)
-                || !$store->consumeTicket(
-                    (int) $loadedTicket['id'],
-                    $checkinId,
+                $lookup->bind_param('is', $existingId, $operationalDate);
+
+                if (!$lookup->execute()) {
+                    $lookup->close();
+                    throw new RuntimeException(
+                        'Check-in indisponível para recuperação.'
+                    );
+                }
+
+                $existingName = null;
+                $isClosed = null;
+                $lookup->bind_result($existingName, $isClosed);
+                $found = $lookup->fetch();
+                $lookup->close();
+
+                if (!$found) {
+                    throw new DomainException('invalid_access_code');
+                }
+
+                if ((int) $isClosed === 1) {
+                    throw new DomainException('checkin_closed');
+                }
+
+                $store->revokeActiveSessions(
+                    $existingId,
+                    'recovery',
                     $now
-                )
-            ) {
-                throw new RuntimeException(
-                    'O código individual não pôde ser consumido.'
                 );
+
+                $store->touchDailyCode((int) $code['id'], $now);
+
+                $checkinId = $existingId;
+                $resolvedName = (string) $existingName;
             }
 
             $store->createSession(
-                $checkinId,
+                (int) $checkinId,
                 $sessionHash,
                 $operationalDate,
                 $now,
@@ -321,14 +367,22 @@ try {
     if ($exception->getMessage() === 'duplicate_name') {
         davez_send_error(
             'checkin_already_exists',
-            'Este check-in já existe. Solicite um código de recuperação ao administrador.',
+            'Este nome já fez check-in hoje. Use o mesmo código para recuperar o acesso.',
+            409
+        );
+    }
+
+    if ($exception->getMessage() === 'checkin_closed') {
+        davez_send_error(
+            'checkin_closed',
+            'Seu check-in de hoje foi encerrado. Solicite um novo código à equipe.',
             409
         );
     }
 
     davez_send_error(
         'invalid_access_code',
-        'Código individual inválido, expirado ou já utilizado.',
+        'Código individual inválido ou expirado.',
         403
     );
 } catch (\DaVez\Database\LockUnavailable $exception) {
@@ -354,7 +408,7 @@ davez_set_public_identity_cookie(
 
 $identity = [
     'checkin_id' => (int) $checkinId,
-    'nome' => $name,
+    'nome' => $resolvedName,
 ];
 
 davez_send_json([

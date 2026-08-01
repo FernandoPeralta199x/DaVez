@@ -646,7 +646,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
         8,
         12
       );
-      $ticketStatus = davez_public_identity_store($conn)->findTicketStatus(
+      $codeStatus = davez_public_identity_store($conn)->findDailyCodeStatus(
         davez_public_ticket_hash($accessCode),
         $operationalDate,
         $operationalContext->reference()
@@ -663,7 +663,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
       ], 503);
     }
 
-    if ($ticketStatus === null) {
+    if ($codeStatus === null) {
       json_out([
         'sucesso' => false,
         'erro' => 'Código individual não encontrado no ciclo atual.'
@@ -672,101 +672,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
 
     json_out([
       'sucesso' => true,
-      'purpose' => $ticketStatus['purpose'],
-      'ticket_state' => $ticketStatus['state'],
-      'expires_at' => $ticketStatus['expires_at']->format(DATE_ATOM),
+      'purpose' => 'daily',
+      'ticket_state' => $codeStatus['state'],
+      'activated' => $codeStatus['activated'],
+      'expires_at' => $codeStatus['expires_at']->format(DATE_ATOM),
     ]);
   }
 
-  if (
-    $acao === 'issue_checkin_ticket'
-    || $acao === 'issue_recovery_ticket'
-  ) {
-    $purpose = $acao === 'issue_recovery_ticket'
-      ? 'recovery'
-      : 'checkin';
-    $checkinId = null;
-
-    if ($purpose === 'recovery') {
-      try {
-        $checkinId = davez_input_integer(
-          $input,
-          'id',
-          1,
-          PHP_INT_MAX
-        );
-      } catch (InvalidArgumentException $exception) {
-        json_out([
-          'sucesso' => false,
-          'erro' => 'Check-in inválido para recuperação.'
-        ], 400);
-      }
-
-      $target = $conn->prepare(
-        "SELECT id
-         FROM checkins
-         WHERE id=?
-           AND operational_date=?
-         LIMIT 1"
-      );
-
-      if (!$target) {
-        json_out([
-          'sucesso' => false,
-          'erro' => 'Check-in indisponível para recuperação.'
-        ], 500);
-      }
-
-      $target->bind_param(
-        'is',
-        $checkinId,
-        $operationalDate
-      );
-
-      if (!$target->execute()) {
-        $target->close();
-        json_out([
-          'sucesso' => false,
-          'erro' => 'Check-in indisponível para recuperação.'
-        ], 500);
-      }
-
-      $target->store_result();
-      $targetExists = $target->num_rows === 1;
-      $target->close();
-
-      if (!$targetExists) {
-        json_out([
-          'sucesso' => false,
-          'erro' => 'Check-in não encontrado no ciclo atual.'
-        ], 404);
-      }
-    }
-
-    // A validade do ticket precisa caber inteira dentro do ciclo (10 min antes
-    // da virada das 06:00). Perto do fim, a emissão é recusada de propósito —
-    // isso não é erro de schema, então damos uma mensagem específica.
-    try {
-      $issuedAt = $operationalContext->reference();
-      $expiresAt = davez_public_ticket_expires_at(
-        $operationalContext,
-        $issuedAt
-      );
-    } catch (RuntimeException $exception) {
-      $fimCiclo = $operationalContext->end()->format('H:i');
-      json_out([
-        'sucesso' => false,
-        'erro' => "Perto da virada do ciclo (às {$fimCiclo}). Aguarde a virada e gere o código novamente."
-      ], 409);
-    }
+  if ($acao === 'issue_checkin_ticket') {
+    // Código diário reutilizável: válido até a virada do ciclo (06:00), ativado
+    // no primeiro check-in e reutilizável para re-entrada e recuperação.
+    $issuedAt = $operationalContext->reference();
+    $expiresAt = $operationalContext->end();
 
     try {
       $accessCode = davez_public_ticket_code();
-      davez_public_identity_store($conn)->issueTicket(
+      davez_public_identity_store($conn)->issueDailyCode(
         davez_public_ticket_hash($accessCode),
-        $purpose,
-        $checkinId,
         $operationalDate,
+        null,
         $issuedAt,
         $expiresAt
       );
@@ -784,10 +708,114 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
 
     json_out([
       'sucesso' => true,
-      'purpose' => $purpose,
+      'purpose' => 'daily',
       'access_code' => $accessCode,
       'expires_at' => $expiresAt->format(DATE_ATOM),
-      'aviso' => 'Exiba e entregue este código apenas uma vez.'
+      'aviso' => 'Vale o dia todo: o mesmo código serve para check-in, re-entrada e recuperação.'
+    ]);
+  }
+
+  if ($acao === 'issue_recovery_ticket') {
+    // Reemite o código diário de um check-in existente (motoboy perdeu o código).
+    try {
+      $checkinId = davez_input_integer(
+        $input,
+        'id',
+        1,
+        PHP_INT_MAX
+      );
+    } catch (InvalidArgumentException $exception) {
+      json_out([
+        'sucesso' => false,
+        'erro' => 'Check-in inválido para recuperação.'
+      ], 400);
+    }
+
+    $target = $conn->prepare(
+      "SELECT nome
+       FROM checkins
+       WHERE id=?
+         AND operational_date=?
+         AND COALESCE(is_closed, 0) = 0
+       LIMIT 1"
+    );
+
+    if (!$target) {
+      json_out([
+        'sucesso' => false,
+        'erro' => 'Check-in indisponível para recuperação.'
+      ], 500);
+    }
+
+    $target->bind_param(
+      'is',
+      $checkinId,
+      $operationalDate
+    );
+
+    if (!$target->execute()) {
+      $target->close();
+      json_out([
+        'sucesso' => false,
+        'erro' => 'Check-in indisponível para recuperação.'
+      ], 500);
+    }
+
+    $targetName = null;
+    $target->bind_result($targetName);
+    $targetExists = $target->fetch();
+    $target->close();
+
+    if (!$targetExists) {
+      json_out([
+        'sucesso' => false,
+        'erro' => 'Check-in não encontrado (ou já encerrado) no ciclo atual.'
+      ], 404);
+    }
+
+    $issuedAt = $operationalContext->reference();
+    $expiresAt = $operationalContext->end();
+
+    try {
+      $store = davez_public_identity_store($conn);
+      $accessCode = davez_public_ticket_code();
+      $newHash = davez_public_ticket_hash($accessCode);
+
+      if (
+        !$store->rotateDailyCodeHash(
+          (int) $checkinId,
+          $operationalDate,
+          $newHash,
+          $issuedAt
+        )
+      ) {
+        $store->issueActivatedDailyCode(
+          $newHash,
+          (int) $checkinId,
+          $operationalDate,
+          (string) $targetName,
+          $issuedAt,
+          $expiresAt
+        );
+      }
+    } catch (InvalidArgumentException $exception) {
+      json_out([
+        'sucesso' => false,
+        'erro' => 'Não foi possível emitir o código individual.'
+      ], 400);
+    } catch (RuntimeException $exception) {
+      json_out([
+        'sucesso' => false,
+        'erro' => 'Emissão indisponível. Confira schema e configuração.'
+      ], 503);
+    }
+
+    json_out([
+      'sucesso' => true,
+      'purpose' => 'recovery',
+      'access_code' => $accessCode,
+      'expires_at' => $expiresAt->format(DATE_ATOM),
+      'aviso' => 'Novo código do dia para este motoboy. O código anterior deixa de valer.'
     ]);
   }
 
@@ -946,6 +974,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
             'fila_da_vez',
             'public_sessions',
             'admission_tickets',
+            'daily_access_codes',
           ];
 
           foreach ($identityTables as $identityTable) {

@@ -61,7 +61,7 @@ try {
         8,
         9
     );
-    $ticketHash = davez_public_ticket_hash($accessCode);
+    $codeHash = davez_public_ticket_hash($accessCode);
     $sessionToken = davez_public_session_token();
     $sessionHash = davez_public_session_hash($sessionToken);
     $sessionExpiresAt = davez_public_session_expires_at(
@@ -100,24 +100,24 @@ try {
             $sessionExpiresAt,
             &$recoveredIdentity
         ): void {
-            $ticket = $store->loadTicketForUpdate(
-                $ticketHash,
-                'recovery',
+            $code = $store->loadDailyCodeForUpdate(
+                $codeHash,
                 $operationalDate,
                 $now
             );
 
-            if (
-                $ticket === null
-                || $ticket['purpose'] !== 'recovery'
-                || (int) ($ticket['checkin_id'] ?? 0) <= 0
-            ) {
+            if ($code === null) {
                 throw new DomainException('invalid_recovery_code');
             }
 
-            $checkinId = (int) $ticket['checkin_id'];
+            if ($code['checkin_id'] === null) {
+                // Código válido, mas ainda sem check-in: recuperar não se aplica.
+                throw new DomainException('not_checked_in');
+            }
+
+            $checkinId = (int) $code['checkin_id'];
             $checkin = $conn->prepare(
-                'SELECT nome
+                'SELECT nome, COALESCE(is_closed, 0)
                  FROM checkins
                  WHERE id=?
                    AND operational_date=?
@@ -145,7 +145,8 @@ try {
             }
 
             $name = null;
-            $checkin->bind_result($name);
+            $isClosed = null;
+            $checkin->bind_result($name, $isClosed);
 
             if (!$checkin->fetch()) {
                 $checkin->close();
@@ -153,21 +154,17 @@ try {
             }
             $checkin->close();
 
+            if ((int) $isClosed === 1) {
+                throw new DomainException('checkin_closed');
+            }
+
             $store->revokeActiveSessions(
                 $checkinId,
                 'recovery',
                 $now
             );
 
-            if (
-                !$store->consumeTicket(
-                    (int) $ticket['id'],
-                    $checkinId,
-                    $now
-                )
-            ) {
-                throw new DomainException('invalid_recovery_code');
-            }
+            $store->touchDailyCode((int) $code['id'], $now);
 
             $store->createSession(
                 $checkinId,
@@ -184,9 +181,25 @@ try {
         }
     );
 } catch (DomainException $exception) {
+    if ($exception->getMessage() === 'not_checked_in') {
+        davez_send_error(
+            'not_checked_in',
+            'Esse código ainda não fez check-in hoje. Faça o check-in com seu nome.',
+            409
+        );
+    }
+
+    if ($exception->getMessage() === 'checkin_closed') {
+        davez_send_error(
+            'checkin_closed',
+            'Seu check-in de hoje foi encerrado. Solicite um novo código à equipe.',
+            409
+        );
+    }
+
     davez_send_error(
         'invalid_recovery_code',
-        'Código de recuperação inválido, expirado ou já utilizado.',
+        'Código inválido ou expirado.',
         403
     );
 } catch (\DaVez\Database\LockUnavailable $exception) {

@@ -24,7 +24,7 @@ assert.ok(
 
 assert.match(checkin, /\['nome', 'access_code', 'lat', 'lng'\]/);
 assert.match(checkin, /davez_public_ticket_hash/);
-assert.match(checkin, /loadTicketForUpdate/);
+assert.match(checkin, /loadDailyCodeForUpdate/);
 assert.match(checkin, /createSession/);
 assert.match(checkin, /operational_date/);
 assert.match(checkin, /isset\(\$_POST\['client_id'\]\)/);
@@ -79,7 +79,8 @@ assert.match(adminListQueue, /["']fila["']\s*=>/);
 
 const recover = read("recover.php");
 assert.match(recover, /\['access_code'\]/);
-assert.match(recover, /purpose['"]?\]\s*!==\s*['"]recovery['"]/);
+assert.match(recover, /loadDailyCodeForUpdate/);
+assert.match(recover, /checkin_id'\]\s*===\s*null/);
 assert.match(recover, /revokeActiveSessions/);
 assert.match(recover, /createSession/);
 assert.doesNotMatch(recover, /\$_POST\[['"]nome['"]\]/);

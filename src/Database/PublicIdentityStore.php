@@ -329,6 +329,435 @@ final class PublicIdentityStore
     }
 
     /**
+     * Emite um código diário reutilizável, sem vínculo inicial de check-in.
+     *
+     * O vínculo é estabelecido na primeira ativação (primeiro check-in). O
+     * código é válido até a virada do ciclo e guarda apenas o HMAC binário.
+     */
+    public function issueDailyCode(
+        string $codeHash,
+        string $operationalDate,
+        ?string $label,
+        DateTimeInterface $createdAt,
+        DateTimeInterface $expiresAt
+    ): int {
+        self::assertBinaryHash($codeHash, 'código diário');
+        self::assertOperationalDate($operationalDate);
+
+        if ($expiresAt->getTimestamp() <= $createdAt->getTimestamp()) {
+            throw new InvalidArgumentException(
+                'O código diário deve expirar após a criação.'
+            );
+        }
+
+        $normalizedLabel = null;
+        if ($label !== null) {
+            $trimmed = trim($label);
+            $normalizedLabel = $trimmed === ''
+                ? null
+                : mb_substr($trimmed, 0, 120);
+        }
+
+        $createdSql = self::toSql($createdAt);
+        $expiresSql = self::toSql($expiresAt);
+        $statement = $this->prepare(
+            'INSERT INTO daily_access_codes
+                (code_hash, operational_date, checkin_id, label,
+                 created_at, expires_at, activated_at, last_used_at,
+                 revoked_at)
+             VALUES (?, ?, NULL, ?, ?, ?, NULL, NULL, NULL)',
+            'Não foi possível emitir o código diário.'
+        );
+
+        try {
+            $statement->bind_param(
+                'sssss',
+                $codeHash,
+                $operationalDate,
+                $normalizedLabel,
+                $createdSql,
+                $expiresSql
+            );
+            $this->execute(
+                $statement,
+                'Não foi possível emitir o código diário.'
+            );
+
+            return (int) $this->connection->insert_id;
+        } finally {
+            $statement->close();
+        }
+    }
+
+    /**
+     * Carrega o código diário válido para uso, travando a linha na transação.
+     *
+     * checkin_id nulo indica código ainda não ativado (aguardando o primeiro
+     * check-in). Um checkin_id preenchido indica re-login da mesma identidade.
+     *
+     * @return array{
+     *   id: int,
+     *   checkin_id: int|null,
+     *   label: string|null,
+     *   activated_at: string|null,
+     *   expires_at: string
+     * }|null
+     */
+    public function loadDailyCodeForUpdate(
+        string $codeHash,
+        string $operationalDate,
+        DateTimeInterface $now
+    ): ?array {
+        self::assertBinaryHash($codeHash, 'código diário');
+        self::assertOperationalDate($operationalDate);
+        $nowSql = self::toSql($now);
+        $statement = $this->prepare(
+            'SELECT id, checkin_id, label, activated_at, expires_at
+             FROM daily_access_codes
+             WHERE code_hash = ?
+               AND operational_date = ?
+               AND revoked_at IS NULL
+               AND expires_at > ?
+             LIMIT 1
+             FOR UPDATE',
+            'Não foi possível consultar o código diário.'
+        );
+
+        try {
+            $statement->bind_param(
+                'sss',
+                $codeHash,
+                $operationalDate,
+                $nowSql
+            );
+            $this->execute(
+                $statement,
+                'Não foi possível consultar o código diário.'
+            );
+
+            $id = null;
+            $checkinId = null;
+            $label = null;
+            $activatedAt = null;
+            $expiresAt = null;
+            $statement->bind_result(
+                $id,
+                $checkinId,
+                $label,
+                $activatedAt,
+                $expiresAt
+            );
+
+            if (!$statement->fetch()) {
+                return null;
+            }
+
+            return [
+                'id' => (int) $id,
+                'checkin_id' => $checkinId === null
+                    ? null
+                    : (int) $checkinId,
+                'label' => $label === null ? null : (string) $label,
+                'activated_at' => $activatedAt === null
+                    ? null
+                    : (string) $activatedAt,
+                'expires_at' => (string) $expiresAt,
+            ];
+        } finally {
+            $statement->close();
+        }
+    }
+
+    /**
+     * Vincula o código ao check-in na primeira ativação. Idempotente por linha.
+     */
+    public function activateDailyCode(
+        int $codeId,
+        int $checkinId,
+        DateTimeInterface $now
+    ): bool {
+        self::assertPositiveId($codeId, 'código diário');
+        self::assertPositiveId($checkinId, 'check-in');
+        $nowSql = self::toSql($now);
+        $statement = $this->prepare(
+            'UPDATE daily_access_codes
+             SET checkin_id = ?, activated_at = ?, last_used_at = ?
+             WHERE id = ?
+               AND checkin_id IS NULL
+               AND activated_at IS NULL
+               AND revoked_at IS NULL
+               AND expires_at > ?',
+            'Não foi possível ativar o código diário.'
+        );
+
+        try {
+            $statement->bind_param(
+                'issis',
+                $checkinId,
+                $nowSql,
+                $nowSql,
+                $codeId,
+                $nowSql
+            );
+            $this->execute(
+                $statement,
+                'Não foi possível ativar o código diário.'
+            );
+
+            return $statement->affected_rows === 1;
+        } finally {
+            $statement->close();
+        }
+    }
+
+    /**
+     * Registra o uso mais recente do código diário (re-login).
+     */
+    public function touchDailyCode(
+        int $codeId,
+        DateTimeInterface $now
+    ): void {
+        self::assertPositiveId($codeId, 'código diário');
+        $nowSql = self::toSql($now);
+        $statement = $this->prepare(
+            'UPDATE daily_access_codes
+             SET last_used_at = ?
+             WHERE id = ?
+               AND revoked_at IS NULL',
+            'Não foi possível atualizar o código diário.'
+        );
+
+        try {
+            $statement->bind_param('si', $nowSql, $codeId);
+            $this->execute(
+                $statement,
+                'Não foi possível atualizar o código diário.'
+            );
+        } finally {
+            $statement->close();
+        }
+    }
+
+    /**
+     * Consulta o estado operacional do código diário sem revelar IDs internos.
+     *
+     * @return array{
+     *   label: string|null,
+     *   state: 'active'|'expired'|'revoked',
+     *   activated: bool,
+     *   expires_at: DateTimeImmutable
+     * }|null
+     */
+    public function findDailyCodeStatus(
+        string $codeHash,
+        string $operationalDate,
+        DateTimeInterface $now
+    ): ?array {
+        self::assertBinaryHash($codeHash, 'código diário');
+        self::assertOperationalDate($operationalDate);
+        $statement = $this->prepare(
+            'SELECT label, expires_at, activated_at, revoked_at
+             FROM daily_access_codes
+             WHERE code_hash = ?
+               AND operational_date = ?
+             LIMIT 1',
+            'Não foi possível consultar o estado do código diário.'
+        );
+
+        try {
+            $statement->bind_param('ss', $codeHash, $operationalDate);
+            $this->execute(
+                $statement,
+                'Não foi possível consultar o estado do código diário.'
+            );
+
+            $label = null;
+            $expiresAt = null;
+            $activatedAt = null;
+            $revokedAt = null;
+            $statement->bind_result(
+                $label,
+                $expiresAt,
+                $activatedAt,
+                $revokedAt
+            );
+
+            if (!$statement->fetch()) {
+                return null;
+            }
+
+            $parsedExpiry = DateTimeImmutable::createFromFormat(
+                '!Y-m-d H:i:s',
+                (string) $expiresAt,
+                $now->getTimezone()
+            );
+
+            if ($parsedExpiry === false) {
+                throw new RuntimeException(
+                    'Não foi possível consultar o estado do código diário.'
+                );
+            }
+
+            $state = 'active';
+            if ($revokedAt !== null) {
+                $state = 'revoked';
+            } elseif ($parsedExpiry <= $now) {
+                $state = 'expired';
+            }
+
+            return [
+                'label' => $label === null ? null : (string) $label,
+                'state' => $state,
+                'activated' => $activatedAt !== null,
+                'expires_at' => $parsedExpiry,
+            ];
+        } finally {
+            $statement->close();
+        }
+    }
+
+    /**
+     * Revoga um código diário, invalidando-o antes da virada do ciclo.
+     */
+    public function revokeDailyCode(
+        int $codeId,
+        DateTimeInterface $revokedAt
+    ): bool {
+        self::assertPositiveId($codeId, 'código diário');
+        $revokedSql = self::toSql($revokedAt);
+        $statement = $this->prepare(
+            'UPDATE daily_access_codes
+             SET revoked_at = ?
+             WHERE id = ?
+               AND revoked_at IS NULL',
+            'Não foi possível revogar o código diário.'
+        );
+
+        try {
+            $statement->bind_param('si', $revokedSql, $codeId);
+            $this->execute(
+                $statement,
+                'Não foi possível revogar o código diário.'
+            );
+
+            return $statement->affected_rows === 1;
+        } finally {
+            $statement->close();
+        }
+    }
+
+    /**
+     * Renova o hash do código diário de um check-in (motoboy perdeu o código).
+     *
+     * Mantém uma única linha por check-in no dia; apenas o HMAC é rotacionado.
+     */
+    public function rotateDailyCodeHash(
+        int $checkinId,
+        string $operationalDate,
+        string $newCodeHash,
+        DateTimeInterface $now
+    ): bool {
+        self::assertPositiveId($checkinId, 'check-in');
+        self::assertOperationalDate($operationalDate);
+        self::assertBinaryHash($newCodeHash, 'código diário');
+        $nowSql = self::toSql($now);
+        $statement = $this->prepare(
+            'UPDATE daily_access_codes
+             SET code_hash = ?, last_used_at = ?
+             WHERE checkin_id = ?
+               AND operational_date = ?
+               AND revoked_at IS NULL
+               AND expires_at > ?',
+            'Não foi possível renovar o código diário.'
+        );
+
+        try {
+            $statement->bind_param(
+                'ssiss',
+                $newCodeHash,
+                $nowSql,
+                $checkinId,
+                $operationalDate,
+                $nowSql
+            );
+            $this->execute(
+                $statement,
+                'Não foi possível renovar o código diário.'
+            );
+
+            return $statement->affected_rows === 1;
+        } finally {
+            $statement->close();
+        }
+    }
+
+    /**
+     * Emite um código diário já vinculado e ativado a um check-in existente.
+     *
+     * Usado quando o check-in ainda não possui um código diário (ex.: inclusão
+     * manual pelo administrador) e precisa de um código para recuperação.
+     */
+    public function issueActivatedDailyCode(
+        string $codeHash,
+        int $checkinId,
+        string $operationalDate,
+        ?string $label,
+        DateTimeInterface $createdAt,
+        DateTimeInterface $expiresAt
+    ): int {
+        self::assertBinaryHash($codeHash, 'código diário');
+        self::assertPositiveId($checkinId, 'check-in');
+        self::assertOperationalDate($operationalDate);
+
+        if ($expiresAt->getTimestamp() <= $createdAt->getTimestamp()) {
+            throw new InvalidArgumentException(
+                'O código diário deve expirar após a criação.'
+            );
+        }
+
+        $normalizedLabel = null;
+        if ($label !== null) {
+            $trimmed = trim($label);
+            $normalizedLabel = $trimmed === ''
+                ? null
+                : mb_substr($trimmed, 0, 120);
+        }
+
+        $createdSql = self::toSql($createdAt);
+        $expiresSql = self::toSql($expiresAt);
+        $statement = $this->prepare(
+            'INSERT INTO daily_access_codes
+                (code_hash, operational_date, checkin_id, label,
+                 created_at, expires_at, activated_at, last_used_at,
+                 revoked_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)',
+            'Não foi possível emitir o código diário.'
+        );
+
+        try {
+            $statement->bind_param(
+                'ssisssss',
+                $codeHash,
+                $operationalDate,
+                $checkinId,
+                $normalizedLabel,
+                $createdSql,
+                $expiresSql,
+                $createdSql,
+                $createdSql
+            );
+            $this->execute(
+                $statement,
+                'Não foi possível emitir o código diário.'
+            );
+
+            return (int) $this->connection->insert_id;
+        } finally {
+            $statement->close();
+        }
+    }
+
+    /**
      * Cria a única sessão ativa do check-in.
      *
      * A constraint UNIQUE(checkin_id, active_slot) é a autoridade final para

@@ -59,6 +59,7 @@ $expectedMigrations = [
     '007_create_public_sessions.sql',
     '008_link_queue_to_checkins.sql',
     '009_create_delivery_events.sql',
+    '010_create_daily_access_codes.sql',
 ];
 $actualMigrations = array_map(
     'basename',
@@ -68,7 +69,7 @@ sort($actualMigrations, SORT_STRING);
 
 assert_identity_v2_schema(
     $actualMigrations === $expectedMigrations,
-    'As migrations devem permanecer numeradas continuamente de 001 a 008.'
+    'As migrations devem permanecer numeradas continuamente de 001 a 010.'
 );
 
 $migrationContents = [];
@@ -155,6 +156,21 @@ assert_identity_v2_fragments(
     'migration 008'
 );
 
+assert_identity_v2_fragments(
+    $migrationContents['010_create_daily_access_codes.sql'],
+    [
+        'CREATE TABLE IF NOT EXISTS daily_access_codes',
+        'code_hash BINARY(32) NOT NULL',
+        'UNIQUE KEY uniq_daily_code_hash',
+        'UNIQUE KEY uniq_daily_code_checkin_cycle',
+        'FOREIGN KEY (checkin_id, operational_date)',
+        'REFERENCES checkins (id, operational_date)',
+        'activated_at IS NULL AND checkin_id IS NULL',
+        'ON DELETE RESTRICT',
+    ],
+    'migration 010'
+);
+
 $schema = read_identity_v2_file($root . '/database/schema.sql');
 assert_identity_v2_fragments(
     $schema,
@@ -168,6 +184,9 @@ assert_identity_v2_fragments(
         'UNIQUE KEY uniq_public_session_active_device',
         'UNIQUE KEY uniq_fila_dia_checkin',
         'CONSTRAINT fk_fila_checkin_cycle',
+        'CREATE TABLE IF NOT EXISTS daily_access_codes',
+        'UNIQUE KEY uniq_daily_code_hash',
+        'CONSTRAINT fk_daily_code_checkin_cycle',
     ],
     'database/schema.sql'
 );
