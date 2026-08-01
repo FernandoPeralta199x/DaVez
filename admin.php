@@ -599,6 +599,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
     'issue_checkin_ticket' => ['acao', '_csrf'],
     'issue_recovery_ticket' => ['acao', 'id', '_csrf'],
     'ticket_status' => ['acao', 'access_code', '_csrf'],
+    'return_to_queue' => ['acao', 'id', '_csrf'],
   ];
 
   if (!isset($allowedJsonFields[$acao])) {
@@ -817,6 +818,96 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
       'expires_at' => $expiresAt->format(DATE_ATOM),
       'aviso' => 'Novo código do dia para este motoboy. O código anterior deixa de valer.'
     ]);
+  }
+
+  if ($acao === 'return_to_queue') {
+    // Devolve um motoboy que estava "em entrega" para o fim da fila.
+    try {
+      $filaId = davez_input_integer($input, 'id', 1, PHP_INT_MAX);
+    } catch (InvalidArgumentException $exception) {
+      json_out(['sucesso' => false, 'erro' => 'Registro inválido.'], 400);
+    }
+
+    $lockedTransactions = davez_locked_transaction_runner($conn);
+
+    try {
+      $lockedTransactions->run(
+        'fila_da_vez:' . $operationalDate,
+        static function () use ($conn, $filaId, $operationalDate): void {
+          $lookup = $conn->prepare(
+            "SELECT id
+             FROM fila_da_vez
+             WHERE id=?
+               AND dia=?
+               AND status='em_entrega'
+             LIMIT 1
+             FOR UPDATE"
+          );
+          if (!$lookup) {
+            throw new RuntimeException('Fila indisponível para atualização.');
+          }
+          $lookup->bind_param('is', $filaId, $operationalDate);
+          if (!$lookup->execute()) {
+            $lookup->close();
+            throw new RuntimeException('Fila indisponível para atualização.');
+          }
+          $lookup->store_result();
+          $found = $lookup->num_rows === 1;
+          $lookup->close();
+          if (!$found) {
+            throw new DomainException('not_in_delivery');
+          }
+
+          $maximum = $conn->prepare(
+            "SELECT COALESCE(MAX(ordem), 0)
+             FROM fila_da_vez
+             WHERE dia=?
+               AND status='na_fila'"
+          );
+          if (!$maximum) {
+            throw new RuntimeException('Fila indisponível para ordenação.');
+          }
+          $maximum->bind_param('s', $operationalDate);
+          if (!$maximum->execute()) {
+            $maximum->close();
+            throw new RuntimeException('Fila indisponível para ordenação.');
+          }
+          $maxOrder = 0;
+          $maximum->bind_result($maxOrder);
+          $maximum->fetch();
+          $maximum->close();
+          $newOrder = (int) $maxOrder + 1;
+
+          $update = $conn->prepare(
+            "UPDATE fila_da_vez
+             SET status='na_fila', ordem=?, entered_at=NOW(),
+                 last_action_at=NOW()
+             WHERE id=?
+               AND dia=?
+               AND status='em_entrega'
+             LIMIT 1"
+          );
+          if (!$update) {
+            throw new RuntimeException('Fila indisponível para atualização.');
+          }
+          $update->bind_param('iis', $newOrder, $filaId, $operationalDate);
+          if (!$update->execute() || $update->affected_rows <= 0) {
+            $update->close();
+            throw new DomainException('not_in_delivery');
+          }
+          $update->close();
+        }
+      );
+    } catch (DomainException $exception) {
+      json_out(['sucesso' => false, 'erro' => 'Registro não está em entrega.'], 404);
+    } catch (\DaVez\Database\LockUnavailable $exception) {
+      header('Retry-After: 2');
+      json_out(['sucesso' => false, 'erro' => 'Fila ocupada. Tente novamente.'], 503);
+    } catch (Throwable $exception) {
+      json_out(['sucesso' => false, 'erro' => 'Não foi possível devolver à fila.'], 500);
+    }
+
+    json_out(['sucesso' => true, 'dia' => $operationalDate]);
   }
 
   if ($acao === 'toggle_chamada') {
@@ -2353,6 +2444,74 @@ button:disabled{cursor:not-allowed;opacity:.48}
     align-items:center;
   }
 }
+.board-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+  margin-top:12px;
+}
+.board-col{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:12px;
+  background:var(--surface-muted);
+}
+.board-col-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:10px;
+}
+.board-col-title{margin:0;font-size:1rem;font-weight:800}
+.board-count{
+  min-width:26px;
+  padding:2px 9px;
+  border-radius:999px;
+  background:var(--accent-soft);
+  color:var(--accent-strong);
+  font-weight:800;
+  font-size:.82rem;
+  text-align:center;
+  font-variant-numeric:tabular-nums;
+}
+.board-count-out{background:var(--warning-soft);color:var(--warning)}
+.board-stack{display:flex;flex-direction:column;gap:8px}
+.ch-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:11px 12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--surface-raised);
+}
+.ch-item.is-next{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.ch-item.ch-out{background:var(--warning-soft)}
+.ch-copy{display:flex;align-items:center;gap:10px;min-width:0}
+.ch-pos{
+  display:inline-grid;
+  place-items:center;
+  width:32px;height:32px;
+  border-radius:50%;
+  background:var(--accent-soft);
+  color:var(--accent-strong);
+  font-weight:800;
+  font-size:.85rem;
+  flex:0 0 auto;
+  font-variant-numeric:tabular-nums;
+}
+.ch-pos-out{background:transparent;font-size:1.15rem}
+.ch-item .item-text{min-width:0}
+.ch-item .item-text b{overflow-wrap:anywhere}
+.ch-wait{color:var(--ink-soft)}
+@media (max-width:720px){
+  .board-grid{grid-template-columns:1fr}
+}
 .actions,.toolbar,.item-actions,.order-actions{
   display:flex;
   flex-wrap:wrap;
@@ -2851,11 +3010,43 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
       <small class="mini">A entrada será criada como <strong>aberta</strong>, com o horário atual.</small>
     </section>
 
+    <section class="card" aria-labelledby="board-title">
+      <div class="toolbar">
+        <div>
+          <h2 id="board-title">Fila e entregas</h2>
+          <p><small class="mini">Chame o próximo, acompanhe quem está na rua e devolva à fila quando voltar.</small></p>
+        </div>
+        <button type="button" class="btn-secondary" id="btnRefreshBoard">Atualizar</button>
+      </div>
+      <div class="board-grid">
+        <div class="board-col">
+          <div class="board-col-head">
+            <h3 class="board-col-title">Na fila</h3>
+            <span class="board-count" id="chFilaCount">0</span>
+          </div>
+          <div id="chFila" class="stack board-stack" role="list"
+            aria-live="polite" aria-busy="false" aria-label="Motoboys na fila">
+            <div class="state-row" role="listitem" data-state="empty">Abra a chamada para receber motoboys.</div>
+          </div>
+        </div>
+        <div class="board-col">
+          <div class="board-col-head">
+            <h3 class="board-col-title">Em entrega</h3>
+            <span class="board-count board-count-out" id="chEntregaCount">0</span>
+          </div>
+          <div id="chEntrega" class="stack board-stack" role="list"
+            aria-live="polite" aria-busy="false" aria-label="Motoboys em entrega">
+            <div class="state-row" role="listitem" data-state="empty">Ninguém em entrega.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="card" aria-labelledby="queue-title">
       <div class="toolbar">
         <div>
           <h2 id="queue-title">Ordem de chegada</h2>
-          <p><small class="mini">Arraste com o ponteiro ou use os botões Subir e Descer.</small></p>
+          <p><small class="mini">Lista completa do dia. Arraste com o ponteiro ou use os botões Subir e Descer.</small></p>
         </div>
       </div>
       <ul id="lista" class="queue-list" tabindex="0" aria-label="Ordem de chegada"
@@ -3266,6 +3457,7 @@ function abrirAba(id, moveFocus=false){
   });
 
   if (moveFocus) selectedTab.focus();
+  if (id === 'chamada') carregarChamadaBoard(true);
   if (id === 'davez') carregarDaVez(true);
   if (id === 'ranking') carregarRanking(rankingPeriodoAtual);
   if (id === 'config') carregarConfig();
@@ -3898,7 +4090,7 @@ async function issueRecoveryTicket(button, id){
     return;
   }
 
-  const item = button.closest('.queue-item');
+  const item = button.closest('.queue-item, .ch-item');
   const name = item && item.querySelector('.nome')
     ? item.querySelector('.nome').textContent.trim()
     : `registro #${id}`;
@@ -4449,6 +4641,141 @@ setInterval(()=>{
   if (sec && sec.classList.contains('active')) carregarDaVez(false);
 }, 8000);
 
+let chBoardCarregando = false;
+let chBoardLast = 0;
+
+async function carregarChamadaBoard(force=false){
+  const filaBox = document.getElementById('chFila');
+  const entBox = document.getElementById('chEntrega');
+  if (!filaBox || !entBox) return;
+  if (chBoardCarregando) return;
+
+  const now = Date.now();
+  if (!force && now - chBoardLast < 3000) return;
+  chBoardLast = now;
+
+  chBoardCarregando = true;
+  filaBox.setAttribute('aria-busy', 'true');
+  entBox.setAttribute('aria-busy', 'true');
+  try {
+    const data = await fetchJsonAdmin(DV_LIST_URL);
+    if (!data.ok) {
+      filaBox.innerHTML = renderState('Erro ao carregar a fila.', 'error');
+      entBox.innerHTML = renderState('Erro ao carregar as entregas.', 'error');
+      return;
+    }
+
+    const fila = Array.isArray(data.fila) ? data.fila : [];
+    const naFila = fila.filter(x => String(x.status || '') === 'na_fila');
+    const emEnt = fila.filter(x => String(x.status || '') === 'em_entrega');
+
+    const filaCount = document.getElementById('chFilaCount');
+    const entCount = document.getElementById('chEntregaCount');
+    if (filaCount) filaCount.textContent = String(naFila.length);
+    if (entCount) entCount.textContent = String(emEnt.length);
+
+    if (naFila.length === 0) {
+      filaBox.innerHTML = renderState('Fila vazia.');
+    } else {
+      filaBox.innerHTML = naFila.map((x, i) => {
+        const filaId = Number.parseInt(x.id || '0', 10);
+        const nome = escapeHtml(x.nome || '');
+        const isNext = i === 0;
+        const acao = isNext
+          ? `<button type="button" class="mini-btn btn-warning" data-action="deliver" data-id="${filaId}">Chamar</button>`
+          : `<span class="ch-wait mini">aguardando</span>`;
+        return `
+          <div class="ch-item${isNext ? ' is-next' : ''}" data-id="${filaId}" role="listitem">
+            <div class="ch-copy">
+              <span class="ch-pos">${i + 1}º</span>
+              <div class="item-text">
+                <b>${isNext ? '🥇 ' : ''}${nome}</b>
+                <div class="mini">Chegou ${escapeHtml(fmtHora(x.entered_at))}</div>
+              </div>
+            </div>
+            <div class="item-actions">${acao}</div>
+          </div>`;
+      }).join('');
+    }
+
+    if (emEnt.length === 0) {
+      entBox.innerHTML = renderState('Ninguém em entrega.');
+    } else {
+      entBox.innerHTML = emEnt.map((x) => {
+        const filaId = Number.parseInt(x.id || '0', 10);
+        const checkinId = Number.parseInt(x.checkin_id || '0', 10);
+        const nome = escapeHtml(x.nome || '');
+        const codeBtn = checkinId > 0
+          ? `<button type="button" class="mini-btn btn-secondary" data-action="issue-recovery" data-id="${checkinId}">Novo código</button>`
+          : '';
+        const closeBtn = checkinId > 0
+          ? `<button type="button" class="mini-btn fechar" data-action="toggle-close" data-id="${checkinId}">Finalizar</button>`
+          : '';
+        return `
+          <div class="ch-item ch-out" data-id="${filaId}" data-checkin="${checkinId}" role="listitem">
+            <div class="ch-copy">
+              <span class="ch-pos ch-pos-out" aria-hidden="true">🛵</span>
+              <div class="item-text">
+                <b class="nome">${nome}</b>
+                <div class="mini">Saiu ${escapeHtml(fmtHora(x.last_action_at || x.entered_at))}</div>
+              </div>
+            </div>
+            <div class="item-actions">
+              <button type="button" class="mini-btn btn-secondary" data-action="return-queue" data-id="${filaId}">Voltou p/ fila</button>
+              ${codeBtn}
+              ${closeBtn}
+            </div>
+          </div>`;
+      }).join('');
+    }
+  } catch (error) {
+    if (!(error instanceof AdminAuthenticationRequiredError)) {
+      filaBox.innerHTML = renderState(
+        error.message || 'Falha ao carregar a fila.',
+        'error'
+      );
+      entBox.innerHTML = renderState(
+        'Não foi possível carregar as entregas.',
+        'error'
+      );
+    }
+  } finally {
+    chBoardCarregando = false;
+    filaBox.setAttribute('aria-busy', 'false');
+    entBox.setAttribute('aria-busy', 'false');
+  }
+}
+
+async function returnToQueue(id){
+  if (!id) return;
+  try {
+    const r = await fetchJsonAdmin('admin.php', {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'X-CSRF-Token':CSRF_TOKEN
+      },
+      body: JSON.stringify({acao:'return_to_queue', id:id})
+    });
+    if (!r.sucesso) {
+      showToast(getErrorMessage(r, 'Falha ao devolver à fila.'), false);
+    } else {
+      showToast('Devolvido para o fim da fila.', true);
+    }
+  } catch (error) {
+    if (!(error instanceof AdminAuthenticationRequiredError)) {
+      showToast(error.message || 'Falha ao devolver à fila.', false);
+    }
+  } finally {
+    carregarDaVez(true);
+  }
+}
+
+setInterval(()=>{
+  const sec = document.getElementById('chamada');
+  if (sec && sec.classList.contains('active')) carregarChamadaBoard(false);
+}, 8000);
+
 async function carregarRelatorios(){
   const box = document.getElementById('lastReportBox');
   box.setAttribute('aria-busy', 'true');
@@ -4828,6 +5155,32 @@ document.getElementById('dvFila').addEventListener('click', event=>{
   }
 });
 
+document.getElementById('chFila').addEventListener('click', async event=>{
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
+  if (button.dataset.action === 'deliver') {
+    await sairParaEntrega(Number.parseInt(button.dataset.id || '0', 10));
+    carregarChamadaBoard(true);
+  }
+});
+
+document.getElementById('chEntrega').addEventListener('click', async event=>{
+  const button = event.target.closest('button[data-action]');
+  if (!button) return;
+  const action = button.dataset.action;
+  if (action === 'return-queue') {
+    await returnToQueue(Number.parseInt(button.dataset.id || '0', 10));
+    carregarChamadaBoard(true);
+  } else if (action === 'toggle-close') {
+    await toggleClose(button, Number.parseInt(button.dataset.id || '0', 10));
+    carregarChamadaBoard(true);
+  } else if (action === 'issue-recovery') {
+    await issueRecoveryTicket(button, Number.parseInt(button.dataset.id || '0', 10));
+  }
+});
+
+document.getElementById('btnRefreshBoard').addEventListener('click', ()=>carregarChamadaBoard(true));
+
 document.getElementById('lastReportBox').addEventListener('click', event=>{
   const button = event.target.closest('button[data-action]');
   if (!button) return;
@@ -4855,6 +5208,7 @@ initializePermanentQr();
 clearIssuedTicket();
 initMainSortable();
 carregar();
+carregarChamadaBoard();
 carregarRelatorios();
 </script>
 <div class="system-signature">
