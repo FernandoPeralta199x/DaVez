@@ -2147,6 +2147,56 @@ button:disabled{cursor:not-allowed;opacity:.48}
   background:color-mix(in srgb,var(--accent) 14%,transparent);
   border:1px solid color-mix(in srgb,var(--accent) 34%,var(--line));
 }
+.log-line{
+  margin-top:6px;
+  font-size:13px;
+  line-height:1.55;
+  color:var(--ink);
+}
+.log-tag{
+  display:inline-block;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.02em;
+  text-transform:uppercase;
+  padding:2px 8px;
+  border-radius:999px;
+  margin-right:6px;
+}
+.log-tag-motivo{
+  color:var(--danger);
+  background:color-mix(in srgb,var(--danger) 16%,transparent);
+}
+.log-tag-solucao{
+  color:var(--success);
+  background:color-mix(in srgb,var(--success) 18%,transparent);
+}
+.btn-locate{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:44px;
+  padding:10px 16px;
+  border-radius:12px;
+  border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));
+  background:color-mix(in srgb,var(--accent) 10%,transparent);
+  color:var(--accent);
+  font-weight:600;
+  font-size:14px;
+  cursor:pointer;
+  transition:background 160ms ease,border-color 160ms ease,transform 120ms ease;
+}
+.btn-locate:hover{
+  background:color-mix(in srgb,var(--accent) 16%,transparent);
+  border-color:color-mix(in srgb,var(--accent) 44%,var(--line));
+}
+.btn-locate:active{transform:scale(.98);}
+.btn-locate:focus-visible{
+  outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent);
+  outline-offset:2px;
+}
+.btn-locate[aria-busy="true"]{opacity:.7;cursor:progress;}
+.btn-locate svg{flex:0 0 auto;}
 #supportLogBox{
   max-height:min(52vh,420px);
   overflow-y:auto;
@@ -2955,6 +3005,18 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
           <small class="field-help" id="lng-help">Coordenada do ponto onde o check-in é validado.</small>
           <input id="lng" name="lng" type="text" inputmode="decimal"
             aria-describedby="lng-help" autocomplete="off" placeholder="Ex.: -46.633308">
+        </div>
+        <div class="field">
+          <button type="button" class="btn-locate" id="btnLocateMe" aria-describedby="locateStatus">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+              stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+              aria-hidden="true" focusable="false">
+              <path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"></path>
+              <circle cx="12" cy="11" r="2.4"></circle>
+            </svg>
+            <span>Me localizar</span>
+          </button>
+          <small class="field-help" id="locateStatus" role="status" aria-live="polite">Usa o GPS para preencher a latitude e a longitude com a sua posição atual. Funciona no PC e no celular.</small>
         </div>
         <div class="field">
           <label for="raio">Raio permitido, em metros</label>
@@ -4488,6 +4550,141 @@ async function carregarRelatorios(){
   }
 }
 
+/* Dicionário de códigos de erro que o celular do motoboy relata. Traduz cada
+   código em Motivo (o que aconteceu) e Solução (o que a equipe faz). */
+const CLIENT_ERROR_INFO = {
+  outside_allowed_area: {
+    motivo: 'O motoboy está fora da área permitida da loja.',
+    solucao: 'Peça para ele chegar mais perto da loja, dentro do raio configurado, e tentar de novo.'
+  },
+  invalid_access_code: {
+    motivo: 'Código individual inválido ou expirado.',
+    solucao: 'Gere um novo código para o motoboy na aba Chamada.'
+  },
+  invalid_checkin_data: {
+    motivo: 'Nome, código ou localização inválidos no check-in.',
+    solucao: 'Confira se o nome e o código foram digitados corretamente.'
+  },
+  checkin_already_exists: {
+    motivo: 'Esse nome já fez check-in hoje.',
+    solucao: 'Use "Emitir recovery" para o motoboy e peça que ele toque em "Recuperar acesso".'
+  },
+  checkin_closed: {
+    motivo: 'O check-in do motoboy foi encerrado hoje.',
+    solucao: 'Gere um novo código para ele na aba Chamada.'
+  },
+  not_checked_in: {
+    motivo: 'O código ainda não fez check-in hoje.',
+    solucao: 'Peça para o motoboy fazer o check-in com o nome antes de recuperar.'
+  },
+  queue_closed: {
+    motivo: 'A chamada está fechada no momento.',
+    solucao: 'Abra a chamada na aba Chamada.'
+  },
+  rate_limit_exceeded: {
+    motivo: 'Muitas tentativas em pouco tempo.',
+    solucao: 'Peça para aguardar cerca de 1 minuto e tentar de novo.'
+  },
+  already_waiting: {
+    motivo: 'O motoboy já está na fila.',
+    solucao: 'Não precisa entrar de novo; ele já está aguardando a vez.'
+  },
+  queue_busy: {
+    motivo: 'A fila estava ocupada no momento.',
+    solucao: 'Peça para tentar novamente em alguns segundos.'
+  },
+  queue_unavailable: {
+    motivo: 'A fila ficou indisponível por um instante.',
+    solucao: 'Peça para tentar novamente; se persistir, me avise.'
+  },
+  geofence_unavailable: {
+    motivo: 'A validação de localização ficou indisponível.',
+    solucao: 'Confira Latitude, Longitude e Raio na aba Configurações.'
+  },
+  settings_unavailable: {
+    motivo: 'As configurações da loja ficaram indisponíveis.',
+    solucao: 'Confira a aba Configurações e salve novamente as coordenadas.'
+  },
+  identity_upgrade_required: {
+    motivo: 'O app do motoboy está com uma versão antiga em cache.',
+    solucao: 'Peça para recarregar a página (puxar para atualizar) e tentar de novo.'
+  },
+  request_context_required: {
+    motivo: 'A página do motoboy ficou aberta tempo demais.',
+    solucao: 'Peça para recarregar a página e tentar de novo.'
+  },
+  network_error: {
+    motivo: 'Falha de conexão do celular com o servidor.',
+    solucao: 'Verifique a internet do motoboy e peça para tentar novamente.'
+  },
+  invalid_response: {
+    motivo: 'O servidor devolveu uma resposta inesperada.',
+    solucao: 'Peça para o motoboy atualizar a página e tentar de novo.'
+  },
+  provider_challenge: {
+    motivo: 'O provedor de hospedagem pediu uma nova validação.',
+    solucao: 'Peça para o motoboy atualizar a página e tentar de novo.'
+  },
+  geo_denied: {
+    motivo: 'O motoboy negou a permissão de localização.',
+    solucao: 'Peça para permitir o acesso à localização nas configurações do navegador e tentar de novo.'
+  },
+  geo_unavailable: {
+    motivo: 'Não foi possível obter a localização (GPS).',
+    solucao: 'Peça para ativar o GPS e tentar em local aberto.'
+  },
+  geo_timeout: {
+    motivo: 'A localização demorou demais para responder.',
+    solucao: 'Peça para aguardar o GPS estabilizar e tentar de novo.'
+  },
+  geo_unsupported: {
+    motivo: 'O aparelho do motoboy não suporta localização.',
+    solucao: 'Peça para usar um navegador/aparelho com GPS.'
+  },
+  geo_unknown: {
+    motivo: 'Erro desconhecido ao obter a localização.',
+    solucao: 'Peça para tentar novamente; se persistir, reiniciar o GPS.'
+  }
+};
+
+const CLIENT_CONTEXT_LABEL = {
+  checkin: 'Check-in',
+  checkin_geo: 'Check-in (localização)',
+  enter: 'Entrar na fila',
+  enter_geo: 'Entrar na fila (localização)',
+  recover: 'Recuperação de acesso',
+  geo: 'Localização',
+  app: 'App'
+};
+
+function renderClientErrorCard(ev){
+  const dados = ev && ev.data && typeof ev.data === 'object' ? ev.data : {};
+  const code = String(dados.client_code || '').toLowerCase();
+  const info = CLIENT_ERROR_INFO[code] || {
+    motivo: `Erro não catalogado (código: ${code || 'desconhecido'}).`,
+    solucao: 'Anote o código e o horário e me avise para investigar.'
+  };
+  const contexto = CLIENT_CONTEXT_LABEL[String(dados.client_context || '')]
+    || (dados.client_context ? String(dados.client_context) : '');
+  const statusTxt = (dados.client_status !== undefined && dados.client_status !== null)
+    ? ` · HTTP ${escapeHtml(String(dados.client_status))}`
+    : '';
+  const meta = [];
+  if (contexto) meta.push(`Onde: ${escapeHtml(contexto)}`);
+  if (code) meta.push(`Código: ${escapeHtml(code)}`);
+  return `
+    <article class="report-item log-client-error">
+      <div class="report-copy">
+        <b>Erro no celular do motoboy</b>
+        <div class="mini">${escapeHtml(ev.time || '')}${statusTxt}</div>
+        <div class="log-line"><span class="log-tag log-tag-motivo">Motivo</span> ${escapeHtml(info.motivo)}</div>
+        <div class="log-line"><span class="log-tag log-tag-solucao">Solução</span> ${escapeHtml(info.solucao)}</div>
+        ${meta.length ? `<div class="mini">${meta.join(' · ')}</div>` : ''}
+      </div>
+    </article>
+  `;
+}
+
 async function carregarLogs(){
   const box = document.getElementById('supportLogBox');
   if (!box) return;
@@ -4501,6 +4698,9 @@ async function carregarLogs(){
     }
 
     box.innerHTML = eventos.map(ev => {
+      if (ev && ev.label === 'CLIENT_ERROR') {
+        return renderClientErrorCard(ev);
+      }
       const dados = ev && ev.data && typeof ev.data === 'object' ? ev.data : {};
       const metricas = Object.keys(dados)
         .map(chave => `${escapeHtml(chave)}: ${escapeHtml(dados[chave])}`)
@@ -4801,6 +5001,40 @@ document.getElementById('configForm').addEventListener('submit', event=>{
   event.preventDefault();
   salvar();
 });
+
+function locateMe(){
+  const btn = document.getElementById('btnLocateMe');
+  const status = document.getElementById('locateStatus');
+  if (!btn || !status) return;
+  if (!('geolocation' in navigator)){
+    status.textContent = 'Este dispositivo não suporta geolocalização.';
+    return;
+  }
+  btn.setAttribute('aria-busy','true');
+  status.textContent = 'Obtendo sua localização…';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const acc = Math.round(pos.coords.accuracy || 0);
+      const latEl = document.getElementById('lat');
+      const lngEl = document.getElementById('lng');
+      if (latEl) latEl.value = pos.coords.latitude.toFixed(7);
+      if (lngEl) lngEl.value = pos.coords.longitude.toFixed(7);
+      status.textContent = `Localização preenchida (precisão ~${acc} m). Revise e toque em Salvar configurações.`;
+      btn.removeAttribute('aria-busy');
+    },
+    (err) => {
+      let msg = 'Não foi possível obter a localização.';
+      if (err && err.code === 1) msg = 'Permissão de localização negada. Autorize no navegador e tente novamente.';
+      else if (err && err.code === 2) msg = 'Localização indisponível. Ative o GPS e tente em local aberto.';
+      else if (err && err.code === 3) msg = 'A localização demorou demais. Tente novamente.';
+      status.textContent = msg;
+      btn.removeAttribute('aria-busy');
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+}
+const btnLocateMe = document.getElementById('btnLocateMe');
+if (btnLocateMe) btnLocateMe.addEventListener('click', locateMe);
 
 document.getElementById('lista').addEventListener('click', event=>{
   const button = event.target.closest('button[data-action]');

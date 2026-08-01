@@ -1940,6 +1940,7 @@ const DAVEZ_LIST_URL = "DaVez/listar.php?v=2";
 const RECOVER_URL = "recover.php?v=1";
 const PUBLIC_LOGOUT_URL = "public_logout.php?v=1";
 const SESSION_INFO_URL = "session_info.php?v=2";
+const CLIENT_LOG_URL = "client_log.php?v=1";
 
 /* ===== Helpers ===== */
 function applyTheme(theme, persist = false) {
@@ -2817,6 +2818,44 @@ function geoErrorMessage(err) {
   return "Falha ao obter localização. Ative o GPS e tente novamente.";
 }
 
+/* Traduz o erro de geolocalização para um código curto (slug) que o painel
+   administrativo reconhece na aba de Logs. */
+function geoErrorCode(err) {
+  if (!err) return "geo_unknown";
+  if (err.code === "NO_GEO") return "geo_unsupported";
+  if (err.code === 1) return "geo_denied";
+  if (err.code === 2) return "geo_unavailable";
+  if (err.code === 3) return "geo_timeout";
+  return "geo_unknown";
+}
+
+/* Relata o código de um erro para a equipe (cai na aba Suporte/Logs). Best
+   effort: nunca lança nem bloqueia o fluxo do motoboy, e nunca envia texto
+   livre — apenas o código já normalizado, o contexto e o status HTTP. */
+function reportClientError(code, context, status) {
+  try {
+    const slug = String(code || "").toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 40);
+    if (!slug) return;
+    const body = new FormData();
+    body.append("code", slug);
+    if (context) {
+      body.append("context", String(context).toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 20));
+    }
+    if (Number.isFinite(Number(status)) && Number(status) > 0) {
+      body.append("status", String(Math.trunc(Number(status))));
+    }
+    fetch(CLIENT_LOG_URL, {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      keepalive: true,
+      body,
+    }).catch(() => {});
+  } catch (_) {
+    /* silencioso por design */
+  }
+}
+
 /* ===== InfinityFree challenge ===== */
 function isInfinityFreeChallenge(html) {
   if (!html) return false;
@@ -2851,6 +2890,7 @@ async function entrarDaVez(fromWait=false){
   try{
     geo = await geoloc();
   } catch(e){
+    reportClientError(geoErrorCode(e), "enter_geo");
     showModal({
       type:"err",
       title:"Localização falhou",
@@ -2877,6 +2917,7 @@ async function entrarDaVez(fromWait=false){
     setStatus("Você entrou na fila DaVez.");
     setTimeout(clearStatus, 2500);
   } catch(e){
+    reportClientError(e.code, "enter", e.status);
     showModal({
       type:"err",
       title:e.status === 401 ? "Sessão expirada" : "Não entrou na fila",
@@ -2948,6 +2989,11 @@ async function checkin() {
     accessCodeEl.value = "";
   } catch (err) {
     clearStatus();
+    if (err instanceof PublicApiError) {
+      reportClientError(err.code, "checkin", err.status);
+    } else {
+      reportClientError(geoErrorCode(err), "checkin_geo");
+    }
     showModal({
       type: "err",
       title: err instanceof PublicApiError
@@ -3002,6 +3048,7 @@ async function recoverAccess() {
     });
   } catch (error) {
     clearStatus();
+    reportClientError(error.code, "recover", error.status);
     showModal({
       type:"err",
       title:"Não foi possível recuperar",

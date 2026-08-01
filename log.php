@@ -72,9 +72,33 @@ function sanitize_log_data($data) {
     'got',
     'error_type',
     'error_line',
+    'client_status',
+  ];
+
+  // Chaves de rótulo curto (enum): aceitam somente slugs seguros [a-z0-9_],
+  // nunca texto livre. É o que permite registrar o código de erro enviado
+  // pelo celular do motoboy sem abrir espaço para injeção ou dados pessoais.
+  $slugKeys = [
+    'client_code' => 40,
+    'client_context' => 20,
   ];
 
   $safeData = [];
+
+  foreach ($slugKeys as $key => $maxLength) {
+    if (!array_key_exists($key, $data)) {
+      continue;
+    }
+
+    $value = $data[$key];
+
+    if (
+      is_string($value)
+      && preg_match('/\A[a-z0-9_]{1,' . $maxLength . '}\z/', $value) === 1
+    ) {
+      $safeData[$key] = $value;
+    }
+  }
 
   foreach ($allowedKeys as $key) {
     if (!array_key_exists($key, $data)) {

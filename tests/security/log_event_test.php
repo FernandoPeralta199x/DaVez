@@ -40,6 +40,9 @@ log_event('SECURITY_TEST', [
   'mysql_error' => 'erro interno privado',
   'ordem' => '7',
   'distancia_m' => 12.5,
+  'client_code' => 'outside_allowed_area',
+  'client_context' => 'contexto inválido!',
+  'client_status' => 403,
 ]);
 
 $rawLog = file_get_contents($logFile);
@@ -55,6 +58,7 @@ foreach ([
   '203.0.113.10',
   'Sensitive User Agent',
   'erro interno privado',
+  'contexto inválido!',
 ] as $forbiddenValue) {
   if (strpos($rawLog, $forbiddenValue) !== false) {
     fail_test('O logger persistiu um valor sensível.', $logFile);
@@ -77,6 +81,18 @@ if (($decodedLog['data']['ordem'] ?? null) !== 7) {
 
 if (($decodedLog['data']['distancia_m'] ?? null) !== 12.5) {
   fail_test('O campo operacional distancia_m não foi preservado.', $logFile);
+}
+
+if (($decodedLog['data']['client_code'] ?? null) !== 'outside_allowed_area') {
+  fail_test('O código de erro do cliente (slug válido) não foi preservado.', $logFile);
+}
+
+if (($decodedLog['data']['client_status'] ?? null) !== 403) {
+  fail_test('O status HTTP do erro do cliente não foi preservado.', $logFile);
+}
+
+if (array_key_exists('client_context', $decodedLog['data'] ?? [])) {
+  fail_test('Um contexto de cliente malformado foi persistido.', $logFile);
 }
 
 @unlink($logFile);

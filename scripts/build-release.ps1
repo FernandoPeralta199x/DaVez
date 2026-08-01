@@ -25,6 +25,7 @@ $releaseFiles = @(
     'SECURITY.md',
     'admin.php',
     'checkin.php',
+    'client_log.php',
     'config.example.php',
     'database/schema.sql',
     'index.html',
