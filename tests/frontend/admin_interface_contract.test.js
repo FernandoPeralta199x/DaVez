@@ -160,8 +160,12 @@ assert.match(inlineScript, /typeof window\.Sortable\.create/);
 
 assert.match(interfaceSource, /<table class="report-table">/);
 assert.match(interfaceSource, /<caption>/);
-assert.equal((interfaceSource.match(/<th scope="col">/g) || []).length, 5);
+// 5 cabeçalhos da tabela de itens do relatório + 6 do ranking embutido.
+assert.equal((interfaceSource.match(/<th scope="col">/g) || []).length, 11);
 assert.match(interfaceSource, /class="table-scroll" tabindex="0" role="region"/);
+assert.match(interfaceSource, /report-rank-title">Ranking do período</);
+assert.match(interfaceSource, /<th scope="col">Score<\/th>/);
+assert.match(interfaceSource, /Array\.isArray\(data\.ranking\)/);
 
 assert.match(interfaceSource, /data-state="loading"/);
 assert.match(interfaceSource, /data-state="empty"/);

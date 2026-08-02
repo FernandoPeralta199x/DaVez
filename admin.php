@@ -565,6 +565,52 @@ if ($action === "ver_relatorio") {
 
   $payload = json_decode($row['payload_json'] ?? '[]', true);
 
+  // Ranking do período do relatório, derivado do log durável de entregas.
+  // Cada relatório cobre exatamente um ciclo operacional, então a data
+  // operacional do ciclo é a de periodo_inicio (evita ambiguidade de fuso,
+  // igual à aba Ranking, que agrega por operational_date).
+  $ranking = [];
+  $rankStmt = $conn->prepare(
+    "SELECT nome,
+            COUNT(*) AS entregas,
+            COUNT(DISTINCT operational_date) AS dias_ativos,
+            ROUND(AVG(queue_wait_seconds)) AS espera_media_seg
+     FROM delivery_events
+     WHERE operational_date = DATE(?)
+     GROUP BY nome
+     ORDER BY entregas DESC, nome ASC
+     LIMIT 200"
+  );
+
+  if ($rankStmt) {
+    $rankStmt->bind_param('s', $row['periodo_inicio']);
+
+    if ($rankStmt->execute()) {
+      $rankResult = $rankStmt->get_result();
+      $posicao = 1;
+      while ($rankRow = $rankResult->fetch_assoc()) {
+        $entregas = (int) $rankRow['entregas'];
+        $diasAtivos = (int) $rankRow['dias_ativos'];
+        $ranking[] = [
+          'posicao' => $posicao,
+          'nome' => (string) $rankRow['nome'],
+          'entregas' => $entregas,
+          'dias_ativos' => $diasAtivos,
+          'espera_media_seg' => $rankRow['espera_media_seg'] === null
+            ? null
+            : (int) $rankRow['espera_media_seg'],
+          'score' => \DaVez\Domain\DeliveryRanking::score(
+            $entregas,
+            $diasAtivos
+          ),
+        ];
+        $posicao++;
+      }
+    }
+
+    $rankStmt->close();
+  }
+
   json_out([
     'meta' => [
       'id' => $row['id'],
@@ -575,7 +621,8 @@ if ($action === "ver_relatorio") {
       'total_fechados' => $row['total_fechados'],
       'created_at' => $row['created_at'],
     ],
-    'payload' => $payload
+    'payload' => $payload,
+    'ranking' => $ranking,
   ]);
 }
 
@@ -2197,6 +2244,8 @@ button:disabled{cursor:not-allowed;opacity:.48}
 }
 .btn-locate[aria-busy="true"]{opacity:.7;cursor:progress;}
 .btn-locate svg{flex:0 0 auto;}
+.report-rank-title{margin:22px 0 4px;font-size:16px;font-weight:600;}
+.report-rank-help{margin:0 0 10px;}
 #supportLogBox{
   max-height:min(52vh,420px);
   overflow-y:auto;
@@ -4868,6 +4917,20 @@ async function abrirRelatorio(id){
           `;
         }).join('');
 
+    const ranking = Array.isArray(data.ranking) ? data.ranking : [];
+    const rankRows = ranking.length === 0
+      ? '<tr><td colspan="6">Nenhuma entrega despachada neste período.</td></tr>'
+      : ranking.map(r => `
+          <tr>
+            <td>${escapeHtml(r.posicao ?? '')}º</td>
+            <td>${escapeHtml(r.nome ?? '')}</td>
+            <td>${escapeHtml(r.entregas ?? 0)}</td>
+            <td>${escapeHtml(r.dias_ativos ?? 0)}</td>
+            <td>${escapeHtml(rankingEspera(r.espera_media_seg))}</td>
+            <td>${escapeHtml(r.score ?? 0)}</td>
+          </tr>
+        `).join('');
+
     box.innerHTML = `
       <div class="toolbar">
         <div>
@@ -4891,6 +4954,25 @@ async function abrirRelatorio(id){
             </tr>
           </thead>
           <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <h3 class="report-rank-title">Ranking do período</h3>
+      <p class="mini report-rank-help">Classificação por entregas despachadas no período deste relatório.</p>
+      <div class="table-scroll" tabindex="0" role="region"
+        aria-label="Ranking do relatório ${escapeHtml(meta.id)}">
+        <table class="report-table">
+          <caption>Ranking de motoboys por entregas no período do relatório.</caption>
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Motoboy</th>
+              <th scope="col">Entregas</th>
+              <th scope="col">Dias ativos</th>
+              <th scope="col">Espera média</th>
+              <th scope="col">Score</th>
+            </tr>
+          </thead>
+          <tbody>${rankRows}</tbody>
         </table>
       </div>
     `;
