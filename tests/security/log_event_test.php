@@ -95,6 +95,30 @@ if (array_key_exists('client_context', $decodedLog['data'] ?? [])) {
   fail_test('Um contexto de cliente malformado foi persistido.', $logFile);
 }
 
+// --- rotação: acima do teto configurado o arquivo é rotacionado para .1 ---
+putenv('APP_LOG_MAX_BYTES=1024');
+$rotated = false;
+for ($i = 0; $i < 40; $i++) {
+  log_event('ROTATION_TEST', ['ordem' => $i]);
+  if (is_file($logFile . '.1')) {
+    $rotated = true;
+    break;
+  }
+}
+putenv('APP_LOG_MAX_BYTES');
+
+if (!$rotated) {
+  @unlink($logFile . '.1');
+  fail_test('O log não rotacionou ao exceder o teto configurado.', $logFile);
+}
+
+clearstatcache(true, $logFile);
+if (filesize($logFile) > 1024) {
+  @unlink($logFile . '.1');
+  fail_test('O log atual não foi reduzido após a rotação.', $logFile);
+}
+
+@unlink($logFile . '.1');
 @unlink($logFile);
 putenv('APP_LOG_PATH');
 

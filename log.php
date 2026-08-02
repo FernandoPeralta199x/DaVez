@@ -142,11 +142,41 @@ function log_event($label, $data = []) {
     return;
   }
 
+  davez_rotate_log_if_needed($file);
+
   @file_put_contents(
     $file,
     $encodedLine . PHP_EOL,
     FILE_APPEND | LOCK_EX
   );
+}
+
+/**
+ * Teto do log em bytes. Configurável por APP_LOG_MAX_BYTES (mínimo 1 KB),
+ * padrão 2 MB. Acima disso o arquivo é rotacionado para não crescer sem fim.
+ */
+function davez_log_max_bytes() {
+  $configured = getenv('APP_LOG_MAX_BYTES');
+  $value = is_string($configured) && ctype_digit($configured)
+    ? (int) $configured
+    : 0;
+
+  return $value >= 1024 ? $value : 2 * 1024 * 1024;
+}
+
+/**
+ * Rotaciona o log quando excede o teto: o arquivo atual vira .1 (substituindo
+ * a rotação anterior) e um novo arquivo começa vazio. Preserva o histórico
+ * recente sem deixar o arquivo crescer indefinidamente.
+ */
+function davez_rotate_log_if_needed($file) {
+  clearstatcache(true, $file);
+
+  if (!is_file($file) || filesize($file) <= davez_log_max_bytes()) {
+    return;
+  }
+
+  @rename($file, $file . '.1');
 }
 
 /**
