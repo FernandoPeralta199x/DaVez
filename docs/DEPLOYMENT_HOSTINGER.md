@@ -86,9 +86,15 @@ for f in $(ls database/migrations/*.sql | sort); do
 done
 ```
 
-As migrations vão de `001` a `009`. A `009` cria `delivery_events` (log durável
-de entregas que alimenta o ranking). Depois disso, **revogue o DDL** do
-`DB_USER` de runtime, se ainda tiver.
+As migrations vão de `001` a `010`. A `009` cria `delivery_events` (log durável
+de entregas que alimenta o ranking) e a `010` cria `daily_access_codes` (código
+de acesso diário reutilizável, vinculado ao motoboy até a virada do ciclo).
+Depois disso, **revogue o DDL** do `DB_USER` de runtime, se ainda tiver.
+
+> **Upgrade de um banco que já está em 009:** aplique **apenas** a `010`
+> (`database/migrations/010_create_daily_access_codes.sql`) com o usuário admin.
+> Não rode o laço acima de novo — as migrations `005` e `008` usam `ALTER TABLE`
+> e falhariam por já terem sido aplicadas.
 
 ## 5. Configurar o geofence (localização da loja)
 
@@ -134,7 +140,7 @@ valide um ciclo de **backup e restore** conforme `docs/BACKUP_RESTORE.md`.
 - [ ] `APP_RATE_LIMIT_SECRET` e `PUBLIC_TICKET_HMAC_KEY` com ≥ 32 bytes aleatórios.
 - [ ] `.user.ini` no webroot apontando para o `davez-env.php`.
 - [ ] `davez-private/` criado fora do webroot, com permissão restrita.
-- [ ] Schema aplicado (schema.sql ou migrations 001..009) por usuário admin do banco.
+- [ ] Schema aplicado (schema.sql ou migrations 001..010) por usuário admin do banco.
 - [ ] `DB_USER` de runtime **sem** DDL.
 - [ ] Geofence da loja definido em Configurações (não `0,0`).
 - [ ] HTTPS ativo; `APP_TRUSTED_PROXIES` definido se houver Cloudflare/proxy.
