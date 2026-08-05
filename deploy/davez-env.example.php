@@ -31,6 +31,10 @@ putenv('ADMIN_SESSION_IDLE_SECONDS=1800');
 putenv('ADMIN_SESSION_ABSOLUTE_SECONDS=28800');
 putenv('APP_SESSION_NAME=davez_session');
 
+// ===== Relógio operacional =====
+putenv('APP_TIMEZONE=America/Sao_Paulo');
+putenv('APP_OPERATIONAL_CYCLE_TIME=01:30');
+
 // ===== Operadores/clientes (operam o painel, SEM acesso aos logs) =====
 // JSON com usuário + hash (nunca senha em texto). Vazio = apenas o dono.
 // Exemplo: [{"user":"DiromaPizzaria","hash":"<hash_gerado_por_password_hash>"}]

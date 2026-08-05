@@ -23,7 +23,7 @@ function assert_token_cycle(bool $condition, string $message): void
 $timezone = new DateTimeZone('America/Sao_Paulo');
 $context = new OperationalContext(
     new OperationalCycle(),
-    new DateTimeImmutable('2026-07-29 05:59:59', $timezone)
+    new DateTimeImmutable('2026-07-29 01:29:59', $timezone)
 );
 $information = TokenCycle::evaluate([
     'token' => 'TESTE2',
@@ -37,7 +37,7 @@ assert_token_cycle(
 
 $atBoundary = new OperationalContext(
     new OperationalCycle(),
-    new DateTimeImmutable('2026-07-29 06:00:00', $timezone)
+    new DateTimeImmutable('2026-07-29 01:30:00', $timezone)
 );
 $information = TokenCycle::evaluate([
     'token' => 'TESTE2',

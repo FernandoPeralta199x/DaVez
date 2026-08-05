@@ -74,3 +74,25 @@ if (!function_exists('davez_public_identity_store')) {
         return new \DaVez\Database\PublicIdentityStore($connection);
     }
 }
+
+if (!function_exists('davez_configure_operational_database_timezone')) {
+    function davez_configure_operational_database_timezone(
+        mysqli $connection,
+        \DaVez\Domain\OperationalCycle $cycle,
+        ?\DateTimeInterface $reference = null
+    ): void {
+        $offset = $cycle->utcOffset($reference);
+
+        if (preg_match('/\A[+-](?:0[0-9]|1[0-4]):[0-5][0-9]\z/', $offset) !== 1) {
+            throw new RuntimeException(
+                'O fuso operacional não pôde ser convertido para o banco.'
+            );
+        }
+
+        if (!$connection->query("SET time_zone = '" . $offset . "'")) {
+            throw new RuntimeException(
+                'Não foi possível configurar o fuso operacional no banco.'
+            );
+        }
+    }
+}

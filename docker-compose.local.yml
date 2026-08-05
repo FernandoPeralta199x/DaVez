@@ -1,0 +1,72 @@
+name: davez-local
+
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: davez
+      MYSQL_USER: davez
+      MYSQL_PASSWORD: ${DAVEZ_LOCAL_DB_PASSWORD:?Defina DAVEZ_LOCAL_DB_PASSWORD em .env.local}
+      MYSQL_ROOT_PASSWORD: ${DAVEZ_LOCAL_DB_ROOT_PASSWORD:?Defina DAVEZ_LOCAL_DB_ROOT_PASSWORD em .env.local}
+      TZ: America/Sao_Paulo
+    ports:
+      - "3307:3306"
+    volumes:
+      - davez_mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8787:80"
+    environment:
+      DB_HOST: db
+      DB_NAME: davez
+      DB_USER: davez
+      DB_PASSWORD: ${DAVEZ_LOCAL_DB_PASSWORD:?Defina DAVEZ_LOCAL_DB_PASSWORD em .env.local}
+      ADMIN_USER: ${DAVEZ_LOCAL_ADMIN_USER:?Defina DAVEZ_LOCAL_ADMIN_USER em .env.local}
+      ADMIN_PASSWORD_HASH: ${DAVEZ_LOCAL_ADMIN_PASSWORD_HASH:?Defina DAVEZ_LOCAL_ADMIN_PASSWORD_HASH em .env.local}
+      ADMIN_SESSION_IDLE_SECONDS: "1800"
+      ADMIN_SESSION_ABSOLUTE_SECONDS: "28800"
+      APP_SESSION_NAME: davez_local_session
+      ADMIN_OPERATORS: ""
+      APP_RATE_LIMIT_DIR: /var/lib/davez-private/rate-limit
+      APP_RATE_LIMIT_SECRET: ${DAVEZ_LOCAL_RATE_LIMIT_SECRET:?Defina DAVEZ_LOCAL_RATE_LIMIT_SECRET em .env.local}
+      APP_LOG_PATH: /var/lib/davez-private/app-events.log
+      PUBLIC_REQUEST_CONTEXT_SECONDS: "43200"
+      PUBLIC_TICKET_HMAC_KEY: ${DAVEZ_LOCAL_TICKET_HMAC_KEY:?Defina DAVEZ_LOCAL_TICKET_HMAC_KEY em .env.local}
+      APP_TRUSTED_PROXIES: ""
+      APP_TIMEZONE: America/Sao_Paulo
+      APP_OPERATIONAL_CYCLE_TIME: "01:30"
+    volumes:
+      - ./:/var/www/html
+      - ./config.example.php:/var/www/html/config.php:ro
+      - davez_private:/var/lib/davez-private
+
+  adminer:
+    image: adminer:4
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8788:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+
+volumes:
+  davez_mysql_data:
+  davez_private:

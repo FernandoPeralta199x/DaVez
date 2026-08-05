@@ -1,0 +1,18 @@
+{
+  "name": "DaVez Tech UX RC2",
+  "version": "1.2.0-rc2",
+  "base_repository": "FernandoPeralta199x/DaVez",
+  "base_commit": "8bc1c10391babc4c49c93eb415dcc5b1c2d50a70",
+  "built_at_utc": "2026-08-05T06:12:00Z",
+  "git_pushed": false,
+  "database_schema_change": false,
+  "operational_cycle_default": "01:30",
+  "status": "release-candidate",
+  "security_review": "terminal-standard-scan",
+  "validation": {
+    "php_lint": 78,
+    "php_tests": 25,
+    "node_tests": 13,
+    "status": "pass"
+  }
+}

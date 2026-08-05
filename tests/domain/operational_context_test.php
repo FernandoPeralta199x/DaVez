@@ -17,7 +17,7 @@ function assert_operational_context(bool $condition, string $message): void
 }
 
 $reference = new DateTimeImmutable(
-    '2026-07-29 05:59:59',
+    '2026-07-29 01:29:59',
     new DateTimeZone('America/Sao_Paulo')
 );
 $context = new OperationalContext(new OperationalCycle(), $reference);
@@ -28,8 +28,8 @@ assert_operational_context(
     'O contexto deve preservar a referência temporal capturada.'
 );
 assert_operational_context(
-    $context->startSql() === '2026-07-28 06:00:00'
-        && $context->endSql() === '2026-07-29 06:00:00'
+    $context->startSql() === '2026-07-28 01:30:00'
+        && $context->endSql() === '2026-07-29 01:30:00'
         && $context->date() === '2026-07-28',
     'Os limites [início, fim) do contexto estão incorretos.'
 );

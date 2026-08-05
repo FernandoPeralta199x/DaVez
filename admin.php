@@ -6,11 +6,14 @@ require_once __DIR__ . '/src/Domain/QueueStateChanged.php';
 require_once __DIR__ . '/src/Domain/QueueReorder.php';
 require_once __DIR__ . '/src/Domain/ReportSnapshot.php';
 require_once __DIR__ . '/src/Domain/DeliveryRanking.php';
+require_once __DIR__ . '/src/Application/Ranking/RankingQuery.php';
+require_once __DIR__ . '/src/Application/Reports/ReportListQuery.php';
 require_once __DIR__ . '/src/Database/bootstrap.php';
 require_once __DIR__ . '/log.php';
 davez_install_safe_exception_handler();
 
-date_default_timezone_set('America/Sao_Paulo');
+$operationalCycle = \DaVez\Domain\OperationalCycle::fromEnvironment();
+date_default_timezone_set($operationalCycle->timezone()->getName());
 davez_start_secure_session(['same_site' => 'Strict']);
 
 function json_out($data, $code=200){
@@ -34,10 +37,16 @@ function admin_render_login(?string $error = null, int $status = 200): never {
     . '<meta name="viewport" content="width=device-width,initial-scale=1">'
     . '<title>Entrar — Administração DaVez</title><style>'
     . 'body{margin:0;min-height:100dvh;display:grid;place-items:center;'
-    . 'font:16px system-ui,sans-serif;background:#070a0f;color:#f4f7fb}'
+    . 'font:16px system-ui,sans-serif;background:radial-gradient(circle at 20% 10%,#163a80,#040914 46%);color:#f4f7fb}'
     . 'main{width:min(92vw,420px);padding:32px;border:1px solid #263142;'
-    . 'border-radius:18px;background:#0c111a}'
-    . 'nav{display:flex;margin-bottom:24px}'
+    . 'border-radius:24px;background:linear-gradient(180deg,#0b1930,#07111f);box-shadow:0 28px 80px rgba(0,0,0,.48)}'
+    . 'nav{display:flex;margin-bottom:22px}'
+    . '.brand-strip{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}'
+    . '.brand-strip img{width:132px;height:auto;padding:10px 14px;border-radius:14px;background:#f7f9ff;box-shadow:0 10px 26px rgba(0,0,0,.24)}'
+    . '.secure-indicator{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid rgba(92,139,255,.24);border-radius:999px;color:#a9bad7;background:rgba(27,51,91,.45);font:700 10px ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}'
+    . '.secure-indicator::before{width:7px;height:7px;border-radius:50%;background:#20d68a;box-shadow:0 0 0 4px rgba(32,214,138,.1),0 0 12px rgba(32,214,138,.55);content:""}'
+    . '.login-kicker{margin:0 0 8px;color:#75a0ff;font:800 11px ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase}'
+    . 'h1{margin:0 0 10px;font-size:clamp(28px,7vw,36px);line-height:1.08;letter-spacing:-.035em}'
     . '.back-home{display:inline-flex;align-items:center;gap:8px;min-height:44px;'
     . 'padding:5px 12px 5px 5px;border:1px solid rgba(125,151,190,.3);'
     . 'border-radius:999px;color:#c7d0dc;background:#111824;'
@@ -61,9 +70,10 @@ function admin_render_login(?string $error = null, int $status = 200): never {
     . 'input{box-sizing:border-box;width:100%;padding:13px;border:1px solid '
     . '#38465a;border-radius:10px;background:#111824;color:#fff}'
     . 'button{width:100%;margin-top:22px;padding:13px;border:0;border-radius:10px;'
-    . 'background:#ff8a1f;color:#17100a;font-weight:800;cursor:pointer}'
+    . 'background:linear-gradient(100deg,#2b65e8,#477fff);color:#fff;box-shadow:0 12px 28px rgba(47,105,240,.3);font-weight:800;cursor:pointer}'
     . '.error{padding:12px;border-radius:10px;background:#421d27;color:#ffd8df}'
     . 'small{color:#96a0ae}'
+    . '@media(max-width:420px){.brand-strip{align-items:flex-start;flex-direction:column}.brand-strip img{width:118px}}'
     . '@media(prefers-reduced-motion:reduce){.back-home,.back-home-icon{'
     . 'transition-duration:.01ms}}'
     . '@media(forced-colors:active){.back-home,.back-home-icon{'
@@ -72,7 +82,10 @@ function admin_render_login(?string $error = null, int $status = 200): never {
     . '<a class="back-home" href="/" aria-label="Voltar para a tela inicial">'
     . '<span class="back-home-icon" aria-hidden="true">←</span>'
     . '<span>Voltar ao início</span></a></nav>'
-    . '<h1>Administração DaVez</h1><small>Sessão protegida e temporária.</small>'
+    . '<div class="brand-strip"><img src="img/logo.png" alt="DaVez">'
+    . '<span class="secure-indicator">Secure console</span></div>'
+    . '<p class="login-kicker">Console operacional</p>'
+    . '<h1>Administração DaVez</h1><small>Sessão protegida, temporária e monitorada.</small>'
     . $safeError
     . '<form method="post" action="admin.php" autocomplete="on">'
     . '<input type="hidden" name="admin_auth_action" value="login">'
@@ -167,12 +180,14 @@ if (!davez_admin_session_is_authenticated()) {
 }
 
 include "config.php";
+davez_configure_operational_database_timezone($conn, $operationalCycle);
 $operationalContext = new \DaVez\Domain\OperationalContext(
-  new \DaVez\Domain\OperationalCycle()
+  $operationalCycle
 );
 $operationalStart = $operationalContext->startSql();
 $operationalEnd = $operationalContext->endSql();
 $operationalDate = $operationalContext->date();
+$operationalCycleLabel = $operationalCycle->startTimeLabel();
 $adminCanViewLogs = davez_admin_can_view_logs();
 
 /* ===== configurações operacionais somente leitura ===== */
@@ -253,6 +268,41 @@ function metrics_hoje($conn, string $inicio, string $fim){
   ];
 }
 
+function admin_query_positive_int(
+  array $input,
+  string $key,
+  int $default,
+  int $maximum
+): int {
+  $raw = $input[$key] ?? null;
+  if ($raw === null || $raw === '') {
+    return $default;
+  }
+  if (!is_string($raw) || !ctype_digit($raw)) {
+    throw new InvalidArgumentException('Parâmetro numérico inválido.');
+  }
+  $value = (int) $raw;
+  if ($value < 1 || $value > $maximum) {
+    throw new InvalidArgumentException('Parâmetro numérico fora do limite.');
+  }
+  return $value;
+}
+
+function admin_query_date(array $input, string $key): string {
+  $raw = $input[$key] ?? null;
+  if ($raw === null || $raw === '') {
+    return '';
+  }
+  if (!is_string($raw)) {
+    throw new InvalidArgumentException('Data inválida.');
+  }
+  $date = DateTimeImmutable::createFromFormat('!Y-m-d', $raw);
+  if ($date === false || $date->format('Y-m-d') !== $raw) {
+    throw new InvalidArgumentException('Data inválida.');
+  }
+  return $raw;
+}
+
 /* ===== actions ===== */
 $action = is_string($_GET['action'] ?? null) ? $_GET['action'] : '';
 $readActions = [
@@ -262,7 +312,8 @@ $readActions = [
   'listar_relatorios',
   'ver_relatorio',
   'logs',
-  'ranking'
+  'ranking',
+  'server_time'
 ];
 
 if ($action !== '') {
@@ -276,7 +327,13 @@ if ($action !== '') {
   if ($action === 'ver_relatorio') {
     $allowedReadKeys = ['action', 'id'];
   } elseif ($action === 'ranking') {
-    $allowedReadKeys = ['action', 'periodo'];
+    $allowedReadKeys = [
+      'action', 'periodo', 'date_from', 'date_to', 'page', 'per_page'
+    ];
+  } elseif ($action === 'listar_relatorios') {
+    $allowedReadKeys = [
+      'action', 'date_from', 'date_to', 'page', 'per_page'
+    ];
   }
 
   try {
@@ -284,6 +341,18 @@ if ($action !== '') {
   } catch (InvalidArgumentException $exception) {
     json_out(['erro' => 'Parâmetros de leitura inválidos.'], 400);
   }
+}
+
+if ($action === "server_time") {
+  $serverNow = $operationalContext->reference();
+  json_out([
+    'ok' => true,
+    'epoch_ms' => $serverNow->getTimestamp() * 1000,
+    'iso' => $serverNow->format(DATE_ATOM),
+    'timezone' => $operationalCycle->timezone()->getName(),
+    'operational_date' => $operationalDate,
+    'cycle_start' => $operationalCycleLabel,
+  ]);
 }
 
 if ($action === "dados") {
@@ -341,17 +410,26 @@ if ($action === "lista") {
 
 /* ===== Relatórios: listar e ver ===== */
 if ($action === "listar_relatorios") {
-  $r = $conn->query("
-    SELECT id, periodo_inicio, periodo_fim, total_checkins, motoboys_unicos, total_fechados, created_at
-    FROM reports
-    ORDER BY id DESC
-    LIMIT 200
-  ");
-  $out = [];
-  if ($r) {
-    while ($row = $r->fetch_assoc()) $out[] = $row;
+  try {
+    $page = admin_query_positive_int($_GET, 'page', 1, 1000000);
+    $perPage = admin_query_positive_int($_GET, 'per_page', 15, 50);
+    $dateFrom = admin_query_date($_GET, 'date_from');
+    $dateTo = admin_query_date($_GET, 'date_to');
+
+    $reports = new \DaVez\Application\Reports\ReportListQuery($conn);
+    $result = $reports->fetchPage(
+      $dateFrom,
+      $dateTo,
+      $page,
+      $perPage
+    );
+  } catch (InvalidArgumentException $exception) {
+    json_out(['erro' => $exception->getMessage()], 400);
+  } catch (RuntimeException $exception) {
+    json_out(['erro' => 'Relatórios indisponíveis.'], 500);
   }
-  json_out($out);
+
+  json_out(array_merge(['ok' => true], $result));
 }
 
 if ($action === "logs") {
@@ -376,175 +454,62 @@ if ($action === "ranking") {
   $periodo = is_string($_GET['periodo'] ?? null) ? $_GET['periodo'] : 'dia';
 
   try {
-    $bounds = \DaVez\Domain\DeliveryRanking::periodBounds(
-      $periodo,
-      $operationalDate
-    );
-    $previous = \DaVez\Domain\DeliveryRanking::previousBounds(
-      $periodo,
-      $operationalDate
+    $page = admin_query_positive_int($_GET, 'page', 1, 1000000);
+    $perPage = admin_query_positive_int($_GET, 'per_page', 25, 100);
+    $dateFrom = admin_query_date($_GET, 'date_from');
+    $dateTo = admin_query_date($_GET, 'date_to');
+
+    if ($dateFrom !== '' || $dateTo !== '') {
+      if ($dateFrom === '' || $dateTo === '') {
+        throw new InvalidArgumentException(
+          'Informe data inicial e final para o intervalo personalizado.'
+        );
+      }
+      $periodo = 'custom';
+      $bounds = \DaVez\Domain\DeliveryRanking::customBounds(
+        $dateFrom,
+        $dateTo,
+        366
+      );
+      $previous = \DaVez\Domain\DeliveryRanking::previousCustomBounds(
+        $dateFrom,
+        $dateTo,
+        366
+      );
+    } else {
+      $bounds = \DaVez\Domain\DeliveryRanking::periodBounds(
+        $periodo,
+        $operationalDate
+      );
+      $previous = \DaVez\Domain\DeliveryRanking::previousBounds(
+        $periodo,
+        $operationalDate
+      );
+    }
+
+    $rankingQuery = new \DaVez\Application\Ranking\RankingQuery($conn);
+    $rankingResult = $rankingQuery->fetchPage(
+      $bounds,
+      $previous,
+      $page,
+      $perPage
     );
   } catch (InvalidArgumentException $exception) {
-    json_out(['erro' => 'Período inválido.'], 400);
+    json_out(['erro' => $exception->getMessage()], 400);
+  } catch (RuntimeException $exception) {
+    json_out(['erro' => 'Ranking temporariamente indisponível.'], 500);
   }
-
-  // Agregado do período por motoboy (nome é a chave natural do sistema).
-  $aggregate = $conn->prepare(
-    "SELECT nome,
-            COUNT(*) AS entregas,
-            COUNT(DISTINCT operational_date) AS dias_ativos,
-            ROUND(AVG(queue_wait_seconds)) AS espera_media_seg
-     FROM delivery_events
-     WHERE operational_date >= ?
-       AND operational_date <= ?
-     GROUP BY nome
-     ORDER BY entregas DESC, nome ASC
-     LIMIT 200"
-  );
-
-  if (!$aggregate) {
-    json_out(['erro' => 'Ranking indisponível.'], 500);
-  }
-
-  $aggregate->bind_param('ss', $bounds['start'], $bounds['end']);
-
-  if (!$aggregate->execute()) {
-    $aggregate->close();
-    json_out(['erro' => 'Ranking indisponível.'], 500);
-  }
-
-  $result = $aggregate->get_result();
-  $motoboys = [];
-  while ($row = $result->fetch_assoc()) {
-    $motoboys[$row['nome']] = [
-      'nome' => (string) $row['nome'],
-      'entregas' => (int) $row['entregas'],
-      'dias_ativos' => (int) $row['dias_ativos'],
-      'espera_media_seg' => $row['espera_media_seg'] === null
-        ? null
-        : (int) $row['espera_media_seg'],
-      'serie' => [],
-      'entregas_anterior' => 0,
-    ];
-  }
-  $aggregate->close();
-
-  // Série diária do período, para a evolução (sparkline).
-  if ($motoboys !== []) {
-    $series = $conn->prepare(
-      "SELECT nome, operational_date, COUNT(*) AS entregas
-       FROM delivery_events
-       WHERE operational_date >= ?
-         AND operational_date <= ?
-       GROUP BY nome, operational_date"
-    );
-
-    if (!$series) {
-      json_out(['erro' => 'Ranking indisponível.'], 500);
-    }
-
-    $series->bind_param('ss', $bounds['start'], $bounds['end']);
-
-    if (!$series->execute()) {
-      $series->close();
-      json_out(['erro' => 'Ranking indisponível.'], 500);
-    }
-
-    $daily = [];
-    $seriesResult = $series->get_result();
-    while ($row = $seriesResult->fetch_assoc()) {
-      $daily[(string) $row['nome']][(string) $row['operational_date']] =
-        (int) $row['entregas'];
-    }
-    $series->close();
-
-    // Preenche zeros para todos os dias do período, mantendo a ordem.
-    $days = [];
-    $cursor = new DateTimeImmutable($bounds['start']);
-    $limit = new DateTimeImmutable($bounds['end']);
-    while ($cursor <= $limit) {
-      $days[] = $cursor->format('Y-m-d');
-      $cursor = $cursor->modify('+1 day');
-    }
-
-    foreach ($motoboys as $nome => &$dados) {
-      foreach ($days as $day) {
-        $dados['serie'][] = $daily[$nome][$day] ?? 0;
-      }
-    }
-    unset($dados);
-
-    // Totais do período anterior, para a evolução percentual.
-    $prevQuery = $conn->prepare(
-      "SELECT nome, COUNT(*) AS entregas
-       FROM delivery_events
-       WHERE operational_date >= ?
-         AND operational_date <= ?
-       GROUP BY nome"
-    );
-
-    if (!$prevQuery) {
-      json_out(['erro' => 'Ranking indisponível.'], 500);
-    }
-
-    $prevQuery->bind_param('ss', $previous['start'], $previous['end']);
-
-    if (!$prevQuery->execute()) {
-      $prevQuery->close();
-      json_out(['erro' => 'Ranking indisponível.'], 500);
-    }
-
-    $prevResult = $prevQuery->get_result();
-    while ($row = $prevResult->fetch_assoc()) {
-      $nome = (string) $row['nome'];
-      if (isset($motoboys[$nome])) {
-        $motoboys[$nome]['entregas_anterior'] = (int) $row['entregas'];
-      }
-    }
-    $prevQuery->close();
-  }
-
-  // Monta a resposta ordenada por pontuação.
-  $ranking = [];
-  foreach ($motoboys as $dados) {
-    $pontuacao = \DaVez\Domain\DeliveryRanking::score(
-      $dados['entregas'],
-      $dados['dias_ativos']
-    );
-    $evolucao = \DaVez\Domain\DeliveryRanking::evolutionPercent(
-      $dados['entregas'],
-      $dados['entregas_anterior']
-    );
-    $ranking[] = [
-      'nome' => $dados['nome'],
-      'entregas' => $dados['entregas'],
-      'dias_ativos' => $dados['dias_ativos'],
-      'media_dia' => $dados['dias_ativos'] > 0
-        ? round($dados['entregas'] / $dados['dias_ativos'], 1)
-        : 0,
-      'espera_media_seg' => $dados['espera_media_seg'],
-      'pontuacao' => $pontuacao,
-      'evolucao_pct' => $evolucao,
-      'serie' => $dados['serie'],
-    ];
-  }
-
-  usort($ranking, static function (array $a, array $b): int {
-    if ($a['pontuacao'] !== $b['pontuacao']) {
-      return $b['pontuacao'] <=> $a['pontuacao'];
-    }
-    if ($a['entregas'] !== $b['entregas']) {
-      return $b['entregas'] <=> $a['entregas'];
-    }
-    return strcasecmp($a['nome'], $b['nome']);
-  });
 
   json_out([
     'ok' => true,
     'periodo' => $periodo,
     'inicio' => $bounds['start'],
     'fim' => $bounds['end'],
-    'ranking' => $ranking,
+    'page' => $rankingResult['page'],
+    'per_page' => $rankingResult['per_page'],
+    'total' => $rankingResult['total'],
+    'total_pages' => $rankingResult['total_pages'],
+    'ranking' => $rankingResult['ranking'],
   ]);
 }
 
@@ -727,7 +692,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ??
   }
 
   if ($acao === 'issue_checkin_ticket') {
-    // Código diário reutilizável: válido até a virada do ciclo (06:00), ativado
+    // Código diário reutilizável: válido até a virada do ciclo configurado, ativado
     // no primeiro check-in e reutilizável para re-entrada e recuperação.
     $issuedAt = $operationalContext->reference();
     $expiresAt = $operationalContext->end();
@@ -1741,6 +1706,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <title>Admin - Chamada Motoboys</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/css/davez-tech-rc2.css?v=1.2.0-rc2">
 <style>
 :root{
   color-scheme:light;
@@ -2673,17 +2639,6 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
 .dialog p{margin:0 0 22px;color:var(--ink-soft)}
 .dialog-actions{display:flex;justify-content:flex-end;gap:10px}
 .hidden{display:none !important}
-.system-signature{
-  position:fixed;
-  right:12px;
-  bottom:7px;
-  z-index:2;
-  color:var(--ink-soft);
-  font-family:"Cascadia Mono","SFMono-Regular",Consolas,monospace;
-  font-size:.65rem;
-  opacity:.5;
-  pointer-events:none;
-}
 .sr-only{
   position:absolute;
   width:1px;
@@ -2769,11 +2724,119 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
     overflow-wrap:anywhere;
   }
 }
+
+/* ===== DaVez Tech Admin RC1 ===== */
+:root{
+  --canvas:#edf3ff;
+  --canvas-deep:#dde8fb;
+  --surface:#f6f9ff;
+  --surface-raised:#ffffff;
+  --surface-muted:#eaf1ff;
+  --ink:#07182f;
+  --ink-soft:#5a6b87;
+  --line:#c8d6ef;
+  --line-strong:#9eb4d7;
+  --accent:#2d68ed;
+  --accent-strong:#1849b8;
+  --accent-soft:#dfebff;
+  --warning:#bc5b0c;
+  --warning-soft:#fff0df;
+  --danger:#b82c43;
+  --danger-strong:#8f1d31;
+  --danger-soft:#ffe5ea;
+  --success:#137653;
+  --success-soft:#ddf6ec;
+  --code-bg:#071326;
+  --code-ink:#70e7ff;
+  --shadow:0 24px 65px rgba(30,70,145,.13);
+  --shadow-small:0 10px 28px rgba(30,70,145,.10);
+  --focus:#2f72ff;
+  --tech-orange:#ff8b2b;
+  --tech-cyan:#43d9ff;
+  --tech-mono:"Cascadia Code","SFMono-Regular",Consolas,monospace;
+}
+body{
+  background:
+    radial-gradient(circle at 8% 4%,rgba(47,114,255,.16),transparent 34rem),
+    radial-gradient(circle at 93% 90%,rgba(255,139,43,.09),transparent 28rem),
+    linear-gradient(145deg,var(--canvas),var(--canvas-deep));
+  background-attachment:fixed;
+}
+body::before{
+  position:fixed;inset:0;z-index:-1;pointer-events:none;content:"";
+  opacity:.42;
+  background-image:linear-gradient(rgba(40,91,188,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(40,91,188,.045) 1px,transparent 1px);
+  background-size:32px 32px;
+  mask-image:radial-gradient(circle at 50% 20%,#000,transparent 78%);
+}
+.admin-system-rail{
+  display:flex;align-items:center;gap:8px;margin:0 0 16px;overflow-x:auto;scrollbar-width:none;
+}
+.admin-system-rail::-webkit-scrollbar{display:none}
+.admin-system-chip{
+  display:inline-flex;align-items:center;gap:7px;min-height:30px;padding:5px 10px;flex:0 0 auto;
+  border:1px solid color-mix(in srgb,var(--accent) 22%,var(--line));border-radius:999px;
+  color:var(--ink-soft);background:color-mix(in srgb,var(--surface-raised) 72%,transparent);
+  font:750 10px/1 var(--tech-mono);letter-spacing:.07em;text-transform:uppercase;
+  backdrop-filter:blur(14px);
+}
+.admin-system-chip[data-online]::before{
+  width:7px;height:7px;border-radius:50%;background:#20cf86;box-shadow:0 0 0 3px rgba(32,207,134,.13),0 0 12px rgba(32,207,134,.48);content:"";
+}
+.admin-header{
+  padding:18px 20px;border:1px solid color-mix(in srgb,var(--accent) 18%,var(--line));border-radius:var(--radius-xl);
+  background:linear-gradient(135deg,color-mix(in srgb,var(--surface-raised) 92%,transparent),color-mix(in srgb,var(--accent-soft) 28%,var(--surface-raised)));
+  box-shadow:var(--shadow-small);
+}
+.titulo-admin img{padding:8px;border-radius:13px;background:#fff;box-shadow:0 8px 22px rgba(20,55,120,.12)}
+.titulo-admin span{background:linear-gradient(105deg,var(--ink) 0 68%,var(--accent) 100%);background-clip:text;-webkit-background-clip:text;color:transparent}
+.tabs-wrap{top:8px;border-color:color-mix(in srgb,var(--accent) 18%,var(--line));background:color-mix(in srgb,var(--surface) 84%,transparent);box-shadow:0 12px 36px rgba(25,62,132,.11)}
+.tab[aria-selected="true"]{border-color:color-mix(in srgb,var(--accent) 28%,var(--line));color:var(--accent-strong);background:linear-gradient(180deg,var(--surface-raised),var(--accent-soft));box-shadow:0 8px 18px rgba(45,104,237,.12)}
+.card,.mcard{
+  position:relative;overflow:hidden;border-color:color-mix(in srgb,var(--accent) 14%,var(--line));
+  background:linear-gradient(180deg,var(--surface-raised),color-mix(in srgb,var(--surface) 95%,var(--accent-soft)));
+  box-shadow:var(--shadow-small);
+}
+.card::before,.mcard::before{
+  position:absolute;top:0;right:18px;width:68px;height:3px;border-radius:0 0 99px 99px;
+  background:linear-gradient(90deg,var(--tech-cyan),var(--accent),var(--tech-orange));content:"";
+}
+button.btn-primary,.btn-primary{background:linear-gradient(100deg,#245be2,#3c75ff);box-shadow:0 10px 24px rgba(45,104,237,.23)}
+.btn-toggle{box-shadow:0 10px 26px rgba(45,104,237,.17)}
+input,select,textarea{border-color:color-mix(in srgb,var(--accent) 20%,var(--line));background:color-mix(in srgb,var(--surface-raised) 92%,var(--accent-soft))}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(45,104,237,.12)}
+.ranking-custom-filter,.report-filter-bar{
+  display:grid;grid-template-columns:repeat(2,minmax(150px,1fr)) auto auto;align-items:end;gap:10px;margin:16px 0;
+  padding:13px;border:1px solid var(--line);border-radius:14px;background:var(--surface-muted);
+}
+.compact-field{display:grid;gap:5px}.compact-field label{font-size:.72rem;font-weight:800;color:var(--ink-soft)}
+.pagination-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.pagination-actions{display:flex;gap:7px}.pagination-actions button{min-height:38px;padding:7px 12px}
+.report-summary{font:700 .76rem/1.4 var(--tech-mono);color:var(--ink-soft)}
+.pdf-action{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+@media (prefers-color-scheme:dark){
+  :root{--canvas:#030916;--canvas-deep:#071326;--surface:#09162b;--surface-raised:#0d1c34;--surface-muted:#10213c;--ink:#eff5ff;--ink-soft:#9aacc8;--line:#263c60;--line-strong:#48638e;--accent:#6d94ff;--accent-strong:#c4d4ff;--accent-soft:#172d55;--warning:#ffc079;--warning-soft:#4c2e13;--danger:#ff95a5;--danger-strong:#ffc2cb;--danger-soft:#4d1f2b;--success:#75dfb0;--success-soft:#153f31;--code-bg:#020711;--code-ink:#72e8ff;--shadow:0 26px 70px rgba(0,0,0,.42);--shadow-small:0 12px 32px rgba(0,0,0,.3);--focus:#82a9ff}
+  body{background:radial-gradient(circle at 8% 4%,rgba(49,97,214,.25),transparent 34rem),radial-gradient(circle at 93% 90%,rgba(255,123,35,.08),transparent 28rem),linear-gradient(145deg,#020711,#071326)}
+  .admin-header,.card,.mcard{background:linear-gradient(180deg,rgba(13,28,52,.97),rgba(8,20,39,.97))}
+  .admin-system-chip{background:rgba(14,30,55,.74)}
+  .titulo-admin span{background-image:linear-gradient(105deg,#f4f7ff 0 68%,#83a5ff 100%)}
+  input,select,textarea{background:#0a1a32}
+}
+@media(max-width:760px){.ranking-custom-filter,.report-filter-bar{grid-template-columns:1fr 1fr}.ranking-custom-filter button,.report-filter-bar button{width:100%}}
+@media(max-width:470px){.ranking-custom-filter,.report-filter-bar{grid-template-columns:1fr}.admin-header{padding:15px}.admin-system-chip:nth-child(3){display:none}}
+
 </style>
 </head>
-<body>
+<body class="admin-app">
 <a class="skip-link" href="#admin-content">Ir para o conteúdo</a>
 <main class="container" id="admin-content">
+  <div class="admin-system-rail" aria-label="Estado do painel">
+    <span class="admin-system-chip" data-online>Operação conectada</span>
+    <span class="admin-system-chip">Ciclo <strong><?= htmlspecialchars($operationalCycleLabel, ENT_QUOTES, 'UTF-8') ?></strong></span>
+    <span class="admin-system-chip">Atualização <strong>12s</strong></span>
+    <span class="admin-system-chip">Data operacional <strong><?= htmlspecialchars($operationalDate, ENT_QUOTES, 'UTF-8') ?></strong></span>
+    <span class="admin-system-chip" id="serverClockChip" data-state="ok">Relógio <strong>sincronizando…</strong></span>
+  </div>
   <header class="admin-header">
     <div>
       <p class="eyebrow">Operação em tempo real</p>
@@ -2862,7 +2925,7 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
         <button type="button" class="btn-clear" id="btnClear">Limpar lista e salvar relatório</button>
         <button type="button" class="btn-primary" id="btnIssueCheckinTicket">Gerar código/QR individual</button>
       </div>
-      <p><small class="mini">Atualização automática a cada 12 segundos. O ciclo operacional vira às 06:00.</small></p>
+      <p><small class="mini">Atualização automática a cada 12 segundos. O ciclo operacional vira às <?= htmlspecialchars($operationalCycleLabel, ENT_QUOTES, 'UTF-8') ?>.</small></p>
     </section>
 
     <section class="card ticket-panel" id="individualTicketCard"
@@ -2873,7 +2936,8 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
           <h2 id="individual-codes-title">Código e QR individual</h2>
           <p>
             Cada clique em <strong>Gerar código/QR individual</strong> cria um
-            código de uso único. Gere um por motoboy e entregue na hora.
+            código diário reutilizável para o motoboy. Ele vale até a virada
+            operacional e pode ser usado para check-in, reentrada e recuperação.
           </p>
         </div>
       </div>
@@ -2998,7 +3062,7 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
   <section id="ranking" class="section" role="tabpanel"
     aria-labelledby="tab-ranking" tabindex="0" hidden>
     <section class="card" aria-labelledby="ranking-title">
-      <div class="ranking-heading">
+      <div class="ranking-heading section-heading-pro">
         <div>
           <p class="eyebrow">Desempenho</p>
           <h2 id="ranking-title">Ranking de Motoboys</h2>
@@ -3007,16 +3071,69 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
             Os dados começam a contar a partir de agora, a cada "Saiu para entrega".
           </p>
         </div>
-        <div class="ranking-filter" role="group" aria-label="Período do ranking">
-          <button type="button" class="ranking-period active" data-periodo="dia"
-            aria-pressed="true">Dia</button>
-          <button type="button" class="ranking-period" data-periodo="semana"
-            aria-pressed="false">Semana</button>
-          <button type="button" class="ranking-period" data-periodo="mes"
-            aria-pressed="false">Mês</button>
+        <div class="section-actions">
+          <div class="ranking-filter" role="group" aria-label="Período do ranking">
+            <button type="button" class="ranking-period active" data-periodo="dia"
+              aria-pressed="true">Dia</button>
+            <button type="button" class="ranking-period" data-periodo="semana"
+              aria-pressed="false">Semana</button>
+            <button type="button" class="ranking-period" data-periodo="mes"
+              aria-pressed="false">Mês</button>
+          </div>
+          <button type="button" class="pdf-action" id="btnRankingPdf">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path>
+              <path d="M9 15h6M9 18h4"></path>
+            </svg>
+            Gerar PDF do ranking
+          </button>
         </div>
       </div>
 
+      <div class="ranking-custom-filter" aria-label="Intervalo personalizado do ranking">
+        <div class="compact-field">
+          <label for="rankingDateFromText">Data inicial</label>
+          <div class="date-combo">
+            <input id="rankingDateFromText" type="text" inputmode="numeric" autocomplete="off"
+              placeholder="MM/DD/YYYY" aria-describedby="ranking-date-hint" data-date-text="rankingDateFrom">
+            <button type="button" class="date-picker-button" data-date-picker="rankingDateFrom"
+              aria-label="Abrir calendário para esta data">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+                <path d="M16 3v4M8 3v4M3 10h18"></path>
+              </svg>
+            </button>
+            <input id="rankingDateFrom" class="native-date-proxy" type="date" tabindex="-1" aria-hidden="true">
+          </div>
+        </div>
+        <div class="compact-field">
+          <label for="rankingDateToText">Data final</label>
+          <div class="date-combo">
+            <input id="rankingDateToText" type="text" inputmode="numeric" autocomplete="off"
+              placeholder="MM/DD/YYYY" aria-describedby="ranking-date-hint" data-date-text="rankingDateTo">
+            <button type="button" class="date-picker-button" data-date-picker="rankingDateTo"
+              aria-label="Abrir calendário para esta data">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+                <path d="M16 3v4M8 3v4M3 10h18"></path>
+              </svg>
+            </button>
+            <input id="rankingDateTo" class="native-date-proxy" type="date" tabindex="-1" aria-hidden="true">
+          </div>
+        </div>
+        <button type="button" class="btn-primary" id="btnApplyRankingRange">Aplicar intervalo</button>
+        <button type="button" class="btn-secondary" id="btnClearRankingRange">Limpar</button>
+      </div>
+      <small class="date-format-hint" id="ranking-date-hint">Use o calendário ou digite no formato MM/DD/YYYY. O servidor valida e normaliza a data.</small>
+
+      <div class="analytics-strip" aria-label="Resumo do ranking">
+        <div class="analytics-card"><span>Classificados</span><strong id="rankingTotal">0</strong></div>
+        <div class="analytics-card"><span>Página</span><strong id="rankingPageSummary">1 / 1</strong></div>
+        <div class="analytics-card"><span>Atualização</span><strong id="rankingUpdatedAt">--:--</strong></div>
+      </div>
       <p class="mini" id="rankingRange" role="status" aria-live="polite"></p>
 
       <div id="rankingBox" class="ranking-list" role="region"
@@ -3024,17 +3141,76 @@ small.mini,.mini{color:var(--ink-soft);font-size:.78rem}
         aria-busy="true" tabindex="0">
         <div class="state-row" data-state="loading">Carregando ranking…</div>
       </div>
+      <div id="rankingPagination" class="pagination-bar" aria-live="polite"></div>
     </section>
   </section>
 
   <section id="relatorio" class="section" role="tabpanel"
     aria-labelledby="tab-relatorio" tabindex="0" hidden>
     <section class="card" aria-labelledby="report-title">
-      <h2 id="report-title">Relatórios salvos</h2>
-      <p><small class="mini">Abra um relatório para consultar os detalhes sem sair do painel.</small></p>
+      <div class="section-heading-pro">
+        <div>
+          <p class="eyebrow">Histórico operacional</p>
+          <h2 id="report-title">Relatórios salvos</h2>
+          <p><small class="mini">Consulte, filtre, pagine e gere arquivos PDF sem sair do painel.</small></p>
+        </div>
+        <div class="section-actions">
+          <button type="button" class="pdf-action" id="btnReportsPdf">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+              stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path>
+              <path d="M9 15h6M9 18h4"></path>
+            </svg>
+            Gerar lista em PDF
+          </button>
+        </div>
+      </div>
+      <div class="report-filter-bar" aria-label="Filtros dos relatórios">
+        <div class="compact-field">
+          <label for="reportDateFromText">Data inicial</label>
+          <div class="date-combo">
+            <input id="reportDateFromText" type="text" inputmode="numeric" autocomplete="off"
+              placeholder="MM/DD/YYYY" aria-describedby="report-date-hint" data-date-text="reportDateFrom">
+            <button type="button" class="date-picker-button" data-date-picker="reportDateFrom"
+              aria-label="Abrir calendário para esta data">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+                <path d="M16 3v4M8 3v4M3 10h18"></path>
+              </svg>
+            </button>
+            <input id="reportDateFrom" class="native-date-proxy" type="date" tabindex="-1" aria-hidden="true">
+          </div>
+        </div>
+        <div class="compact-field">
+          <label for="reportDateToText">Data final</label>
+          <div class="date-combo">
+            <input id="reportDateToText" type="text" inputmode="numeric" autocomplete="off"
+              placeholder="MM/DD/YYYY" aria-describedby="report-date-hint" data-date-text="reportDateTo">
+            <button type="button" class="date-picker-button" data-date-picker="reportDateTo"
+              aria-label="Abrir calendário para esta data">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+                <path d="M16 3v4M8 3v4M3 10h18"></path>
+              </svg>
+            </button>
+            <input id="reportDateTo" class="native-date-proxy" type="date" tabindex="-1" aria-hidden="true">
+          </div>
+        </div>
+        <button type="button" class="btn-primary" id="btnApplyReportFilters">Pesquisar</button>
+        <button type="button" class="btn-secondary" id="btnClearReportFilters">Limpar</button>
+      </div>
+      <small class="date-format-hint" id="report-date-hint">A lista mostra 15 relatórios por página. Use o calendário ou digite MM/DD/YYYY.</small>
+      <div class="analytics-strip" aria-label="Resumo dos relatórios">
+        <div class="analytics-card"><span>Encontrados</span><strong id="reportsTotal">0</strong></div>
+        <div class="analytics-card"><span>Página</span><strong id="reportsPageSummary">1 / 1</strong></div>
+        <div class="analytics-card"><span>Filtro</span><strong id="reportsFilterSummary">Todos</strong></div>
+      </div>
       <div id="lastReportBox" aria-live="polite" aria-busy="true">
         <div class="state-row" data-state="loading">Carregando relatórios...</div>
       </div>
+      <div id="reportPagination" class="pagination-bar" aria-live="polite"></div>
     </section>
   </section>
 
@@ -4560,33 +4736,229 @@ setInterval(()=>{
   if (sec && sec.classList.contains('active')) carregarDaVez(false);
 }, 8000);
 
-async function carregarRelatorios(){
+let reportPage = 1;
+let reportDateFrom = '';
+let reportDateTo = '';
+
+function parseUsDate(value){
+  const normalized = String(value || '').trim();
+  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(normalized);
+  if (!match) return '';
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  const year = Number(match[3]);
+  if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) {
+    return '';
+  }
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) {
+    return '';
+  }
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function formatIsoDateUs(value){
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  return match ? `${match[2]}/${match[3]}/${match[1]}` : '';
+}
+
+function formatSqlDateTimeUs(value){
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(String(value || ''));
+  if (!match) return String(value || '');
+  const date = `${match[2]}/${match[3]}/${match[1]}`;
+  return match[4] ? `${date} ${match[4]}:${match[5]}` : date;
+}
+
+function readDateField(proxyId, required = false){
+  const proxy = document.getElementById(proxyId);
+  const textInput = document.querySelector(`[data-date-text="${proxyId}"]`);
+  const raw = String(textInput?.value || '').trim();
+  if (raw === '') {
+    if (proxy) proxy.value = '';
+    return required ? null : '';
+  }
+  const iso = parseUsDate(raw);
+  if (!iso) {
+    textInput?.setAttribute('aria-invalid', 'true');
+    textInput?.focus();
+    return null;
+  }
+  textInput?.removeAttribute('aria-invalid');
+  if (proxy) proxy.value = iso;
+  if (textInput) textInput.value = formatIsoDateUs(iso);
+  return iso;
+}
+
+function clearDateField(proxyId){
+  const proxy = document.getElementById(proxyId);
+  const textInput = document.querySelector(`[data-date-text="${proxyId}"]`);
+  if (proxy) proxy.value = '';
+  if (textInput) {
+    textInput.value = '';
+    textInput.removeAttribute('aria-invalid');
+  }
+}
+
+function initializeDateFields(){
+  document.querySelectorAll('[data-date-picker]').forEach(button => {
+    button.addEventListener('click', () => {
+      const proxy = document.getElementById(button.dataset.datePicker || '');
+      if (!proxy) return;
+      try {
+        if (typeof proxy.showPicker === 'function') proxy.showPicker();
+        else { proxy.focus(); proxy.click(); }
+      } catch (error) {
+        proxy.focus();
+      }
+    });
+  });
+
+  document.querySelectorAll('input.native-date-proxy').forEach(proxy => {
+    proxy.addEventListener('change', () => {
+      const textInput = document.querySelector(`[data-date-text="${proxy.id}"]`);
+      if (textInput) {
+        textInput.value = formatIsoDateUs(proxy.value);
+        textInput.removeAttribute('aria-invalid');
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-date-text]').forEach(input => {
+    input.addEventListener('blur', () => {
+      if (!input.value.trim()) {
+        clearDateField(input.dataset.dateText || '');
+        return;
+      }
+      const iso = parseUsDate(input.value);
+      if (iso) {
+        input.value = formatIsoDateUs(iso);
+        input.removeAttribute('aria-invalid');
+        const proxy = document.getElementById(input.dataset.dateText || '');
+        if (proxy) proxy.value = iso;
+      }
+    });
+  });
+}
+
+function localTimeLabel(date = new Date()){
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '--:--';
+  return new Intl.DateTimeFormat('pt-BR', {
+    hour:'2-digit', minute:'2-digit', second:'2-digit'
+  }).format(date);
+}
+
+function setText(id, value){
+  const element = document.getElementById(id);
+  if (element) element.textContent = String(value);
+}
+
+function buildReportsPdfUrl(){
+  const params = new URLSearchParams();
+  if (reportDateFrom) params.set('date_from', reportDateFrom);
+  if (reportDateTo) params.set('date_to', reportDateTo);
+  const query = params.toString();
+  return 'reports_pdf.php' + (query ? '?' + query : '');
+}
+
+function downloadReportsPdf(){
+  window.location.assign(buildReportsPdfUrl());
+}
+
+
+function paginationMarkup(page, totalPages, total, pager){
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeTotalPages = Math.max(1, Number(totalPages) || 1);
+  const safeTotal = Math.max(0, Number(total) || 0);
+  return `
+    <span class="report-summary">Página ${safePage} de ${safeTotalPages} · ${safeTotal} registro(s)</span>
+    <div class="pagination-actions">
+      <button type="button" class="btn-secondary" data-pager="${pager}" data-page="${safePage - 1}"
+        ${safePage <= 1 ? 'disabled' : ''}>Anterior</button>
+      <button type="button" class="btn-secondary" data-pager="${pager}" data-page="${safePage + 1}"
+        ${safePage >= safeTotalPages ? 'disabled' : ''}>Próxima</button>
+    </div>`;
+}
+
+async function carregarRelatorios(page=reportPage){
   const box = document.getElementById('lastReportBox');
+  const pagination = document.getElementById('reportPagination');
+  reportPage = Math.max(1, Number(page) || 1);
   box.setAttribute('aria-busy', 'true');
+  if (pagination) pagination.innerHTML = '';
+
+  const params = new URLSearchParams({
+    action:'listar_relatorios',
+    page:String(reportPage),
+    per_page:'15'
+  });
+  if (reportDateFrom) params.set('date_from', reportDateFrom);
+  if (reportDateTo) params.set('date_to', reportDateTo);
+
   try {
-    const lista = await fetchJsonAdmin("admin.php?action=listar_relatorios");
-    if (!Array.isArray(lista) || lista.length === 0) {
-      box.innerHTML = renderState("Nenhum relatório salvo ainda.");
-      return;
+    const data = await fetchJsonAdmin('admin.php?' + params.toString());
+    const lista = Array.isArray(data.items) ? data.items : [];
+    reportPage = Number(data.page) || reportPage;
+    setText('reportsTotal', Number(data.total) || 0);
+    setText('reportsPageSummary', `${Number(data.page) || 1} / ${Number(data.total_pages) || 1}`);
+    setText(
+      'reportsFilterSummary',
+      reportDateFrom && reportDateTo ? `${formatIsoDateUs(reportDateFrom)} → ${formatIsoDateUs(reportDateTo)}` : 'Todos'
+    );
+
+    if (lista.length === 0) {
+      box.innerHTML = renderState('Nenhum relatório encontrado para os filtros atuais.');
+    } else {
+      box.innerHTML = `
+        <div class="table-scroll report-index-scroll" tabindex="0" role="region" aria-label="Lista paginada de relatórios">
+          <table class="report-table report-index-table">
+            <caption>Relatórios operacionais, 15 registros por página.</caption>
+            <thead><tr>
+              <th scope="col">ID</th>
+              <th scope="col">Criado em</th>
+              <th scope="col">Período</th>
+              <th scope="col">Check-ins</th>
+              <th scope="col">Únicos</th>
+              <th scope="col">Fechados</th>
+              <th scope="col">Status</th>
+              <th scope="col">Ações</th>
+            </tr></thead>
+            <tbody>
+              ${lista.map(r => `
+                <tr>
+                  <td><b>#${escapeHtml(r.id)}</b></td>
+                  <td>${escapeHtml(formatSqlDateTimeUs(r.created_at))}</td>
+                  <td>${escapeHtml(formatSqlDateTimeUs(r.periodo_inicio))}<br><span class="mini">até ${escapeHtml(formatSqlDateTimeUs(r.periodo_fim))}</span></td>
+                  <td>${escapeHtml(r.total_checkins)}</td>
+                  <td>${escapeHtml(r.motoboys_unicos)}</td>
+                  <td>${escapeHtml(r.total_fechados)}</td>
+                  <td><span class="report-status-badge">Pronto</span></td>
+                  <td>
+                    <div class="item-actions report-table-actions">
+                      <button type="button" class="mini-btn btn-primary" data-action="view-report" data-id="${escapeHtml(r.id)}">Visualizar</button>
+                      <button type="button" class="mini-btn btn-secondary" data-action="download-report" data-id="${escapeHtml(r.id)}">PDF</button>
+                      <button type="button" class="mini-btn btn-danger" data-action="delete-report" data-id="${escapeHtml(r.id)}">Apagar</button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
     }
 
-    box.innerHTML = `
-      <div class="report-list">
-        ${lista.map(r => `
-          <article class="report-item">
-            <div class="report-copy">
-              <b>Relatório #${escapeHtml(r.id)}</b>
-              <div>${escapeHtml(r.periodo_inicio)} → ${escapeHtml(r.periodo_fim)}</div>
-              <div class="mini">Total: ${escapeHtml(r.total_checkins)} | Únicos: ${escapeHtml(r.motoboys_unicos)} | Fechados: ${escapeHtml(r.total_fechados)}</div>
-            </div>
-            <div class="item-actions">
-              <button type="button" class="mini-btn btn-primary" data-action="view-report" data-id="${escapeHtml(r.id)}">Ver</button>
-              <button type="button" class="mini-btn btn-danger" data-action="delete-report" data-id="${escapeHtml(r.id)}">Apagar</button>
-            </div>
-          </article>
-        `).join('')}
-      </div>
-    `;
+    if (pagination) {
+      pagination.innerHTML = paginationMarkup(
+        data.page,
+        data.total_pages,
+        data.total,
+        'reports'
+      );
+    }
   } catch (error) {
     if (!(error instanceof AdminAuthenticationRequiredError)) {
       box.innerHTML = renderState(
@@ -4597,6 +4969,34 @@ async function carregarRelatorios(){
   } finally {
     box.setAttribute('aria-busy', 'false');
   }
+}
+
+function applyReportFilters(){
+  const parsedFrom = readDateField('reportDateFrom', false);
+  const parsedTo = readDateField('reportDateTo', false);
+  if (parsedFrom === null || parsedTo === null) {
+    showToast('Use o formato MM/DD/YYYY ou selecione a data no calendário.', false);
+    return;
+  }
+  reportDateFrom = parsedFrom;
+  reportDateTo = parsedTo;
+  if ((reportDateFrom && !reportDateTo) || (!reportDateFrom && reportDateTo)) {
+    showToast('Informe as duas datas ou deixe ambas vazias.', false);
+    return;
+  }
+  if (reportDateFrom && reportDateTo && reportDateTo < reportDateFrom) {
+    showToast('A data final não pode ser anterior à inicial.', false);
+    return;
+  }
+  carregarRelatorios(1);
+}
+
+function clearReportFilters(){
+  reportDateFrom = '';
+  reportDateTo = '';
+  clearDateField('reportDateFrom');
+  clearDateField('reportDateTo');
+  carregarRelatorios(1);
 }
 
 /* Dicionário de códigos de erro que o celular do motoboy relata. Traduz cada
@@ -4777,10 +5177,33 @@ async function carregarLogs(){
 }
 
 let rankingPeriodoAtual = 'dia';
+let rankingPage = 1;
+let rankingDateFrom = '';
+let rankingDateTo = '';
+
+function buildRankingPdfUrl(){
+  const params = new URLSearchParams();
+  if (rankingPeriodoAtual === 'custom') {
+    params.set('date_from', rankingDateFrom);
+    params.set('date_to', rankingDateTo);
+  } else {
+    params.set('periodo', rankingPeriodoAtual);
+  }
+  return 'ranking_pdf.php?' + params.toString();
+}
+
+function downloadRankingPdf(){
+  if (rankingPeriodoAtual === 'custom' && (!rankingDateFrom || !rankingDateTo)) {
+    showToast('Aplique um intervalo válido antes de gerar o PDF.', false);
+    return;
+  }
+  window.location.assign(buildRankingPdfUrl());
+}
 
 function rankingLabelPeriodo(periodo){
   if (periodo === 'semana') return 'últimos 7 dias';
   if (periodo === 'mes') return 'últimos 30 dias';
+  if (periodo === 'custom') return 'intervalo personalizado';
   return 'hoje';
 }
 
@@ -4824,61 +5247,86 @@ function rankingEvolucao(pct){
   return `<span class="ranking-evo" data-dir="${dir}">${seta} ${Math.abs(valor)}%</span>`;
 }
 
-async function carregarRanking(periodo){
-  rankingPeriodoAtual = ['dia', 'semana', 'mes'].includes(periodo) ? periodo : 'dia';
+async function carregarRanking(periodo=rankingPeriodoAtual, page=1){
+  const isPreset = ['dia', 'semana', 'mes'].includes(periodo);
+  rankingPeriodoAtual = isPreset ? periodo : 'custom';
+  rankingPage = Math.max(1, Number(page) || 1);
   const box = document.getElementById('rankingBox');
+  const pagination = document.getElementById('rankingPagination');
   if (!box) return;
 
   document.querySelectorAll('.ranking-period').forEach(botao => {
-    const ativo = botao.dataset.periodo === rankingPeriodoAtual;
+    const ativo = isPreset && botao.dataset.periodo === rankingPeriodoAtual;
     botao.classList.toggle('active', ativo);
     botao.setAttribute('aria-pressed', ativo ? 'true' : 'false');
   });
 
   box.setAttribute('aria-busy', 'true');
+  if (pagination) pagination.innerHTML = '';
   const faixa = document.getElementById('rankingRange');
+  const params = new URLSearchParams({
+    action:'ranking',
+    periodo:rankingPeriodoAtual === 'custom' ? 'dia' : rankingPeriodoAtual,
+    page:String(rankingPage),
+    per_page:'25'
+  });
+  if (rankingPeriodoAtual === 'custom') {
+    params.set('date_from', rankingDateFrom);
+    params.set('date_to', rankingDateTo);
+  }
 
   try {
-    const data = await fetchJsonAdmin(
-      'admin.php?action=ranking&periodo=' + encodeURIComponent(rankingPeriodoAtual)
-    );
+    const data = await fetchJsonAdmin('admin.php?' + params.toString());
     const ranking = Array.isArray(data.ranking) ? data.ranking : [];
+    rankingPage = Number(data.page) || rankingPage;
+    setText('rankingTotal', Number(data.total) || 0);
+    setText('rankingPageSummary', `${Number(data.page) || 1} / ${Number(data.total_pages) || 1}`);
+    setText('rankingUpdatedAt', localTimeLabel());
 
     if (faixa) {
-      faixa.textContent = `Período: ${rankingLabelPeriodo(rankingPeriodoAtual)}`
-        + (data.inicio && data.fim ? ` (${data.inicio} a ${data.fim})` : '');
+      faixa.textContent = `Período: ${rankingLabelPeriodo(data.periodo || rankingPeriodoAtual)}`
+        + (data.inicio && data.fim ? ` (${formatIsoDateUs(data.inicio)} a ${formatIsoDateUs(data.fim)})` : '');
     }
 
     if (ranking.length === 0) {
       box.innerHTML = renderState(
         'Nenhuma entrega registrada neste período. O ranking preenche conforme os despachos acontecem.'
       );
-      return;
+    } else {
+      const offset = (rankingPage - 1) * (Number(data.per_page) || 25);
+      box.innerHTML = ranking.map((item, indice) => {
+        const posicao = Number(item.position) || (offset + indice + 1);
+        const media = Number(item.media_dia || 0);
+        return `
+          <article class="ranking-row" data-top="${posicao}" role="listitem">
+            <span class="ranking-pos">${posicao}</span>
+            <div class="ranking-main">
+              <div class="ranking-name">${escapeHtml(item.nome)}</div>
+              <div class="ranking-metrics">
+                <span><b>${escapeHtml(item.entregas)}</b> entregas</span>
+                <span><b>${escapeHtml(item.dias_ativos)}</b> dias ativos</span>
+                <span><b>${escapeHtml(media)}</b>/dia</span>
+                <span>espera <b>${escapeHtml(rankingEspera(item.espera_media_seg))}</b></span>
+              </div>
+            </div>
+            <div class="ranking-side">
+              ${rankingSpark(item.serie)}
+              <span class="ranking-score">${escapeHtml(item.pontuacao)} <span>pts</span></span>
+              ${rankingEvolucao(item.evolucao_pct)}
+            </div>
+          </article>
+        `;
+      }).join('');
     }
 
-    box.innerHTML = ranking.map((item, indice) => {
-      const posicao = indice + 1;
-      const media = Number(item.media_dia || 0);
-      return `
-        <article class="ranking-row" data-top="${posicao}" role="listitem">
-          <span class="ranking-pos">${posicao}</span>
-          <div class="ranking-main">
-            <div class="ranking-name">${escapeHtml(item.nome)}</div>
-            <div class="ranking-metrics">
-              <span><b>${escapeHtml(item.entregas)}</b> entregas</span>
-              <span><b>${escapeHtml(item.dias_ativos)}</b> dias ativos</span>
-              <span><b>${escapeHtml(media)}</b>/dia</span>
-              <span>espera <b>${escapeHtml(rankingEspera(item.espera_media_seg))}</b></span>
-            </div>
-          </div>
-          <div class="ranking-side">
-            ${rankingSpark(item.serie)}
-            <span class="ranking-score">${escapeHtml(item.pontuacao)} <span>pts</span></span>
-            ${rankingEvolucao(item.evolucao_pct)}
-          </div>
-        </article>
-      `;
-    }).join('');
+    if (pagination) {
+      pagination.innerHTML = paginationMarkup(
+        data.page,
+        data.total_pages,
+        data.total,
+        'ranking'
+      );
+    }
   } catch (error) {
     if (!(error instanceof AdminAuthenticationRequiredError)) {
       box.innerHTML = renderState(
@@ -4889,6 +5337,34 @@ async function carregarRanking(periodo){
   } finally {
     box.setAttribute('aria-busy', 'false');
   }
+}
+
+function applyRankingRange(){
+  const parsedFrom = readDateField('rankingDateFrom', false);
+  const parsedTo = readDateField('rankingDateTo', false);
+  if (parsedFrom === null || parsedTo === null) {
+    showToast('Use o formato MM/DD/YYYY ou selecione a data no calendário.', false);
+    return;
+  }
+  rankingDateFrom = parsedFrom;
+  rankingDateTo = parsedTo;
+  if (!rankingDateFrom || !rankingDateTo) {
+    showToast('Informe a data inicial e a data final.', false);
+    return;
+  }
+  if (rankingDateTo < rankingDateFrom) {
+    showToast('A data final não pode ser anterior à inicial.', false);
+    return;
+  }
+  carregarRanking('custom', 1);
+}
+
+function clearRankingRange(){
+  rankingDateFrom = '';
+  rankingDateTo = '';
+  clearDateField('rankingDateFrom');
+  clearDateField('rankingDateTo');
+  carregarRanking('dia', 1);
 }
 
 async function abrirRelatorio(id){
@@ -4938,7 +5414,10 @@ async function abrirRelatorio(id){
           <div class="mini">${escapeHtml(meta.periodo_inicio)} → ${escapeHtml(meta.periodo_fim)}</div>
           <div class="mini">Total: ${escapeHtml(meta.total_checkins)} | Únicos: ${escapeHtml(meta.motoboys_unicos)} | Fechados: ${escapeHtml(meta.total_fechados)}</div>
         </div>
-        <button type="button" class="mini-btn btn-secondary" data-action="back-reports">Voltar</button>
+        <div class="item-actions">
+          <button type="button" class="mini-btn btn-primary" data-action="download-report" data-id="${escapeHtml(meta.id)}">Gerar Arquivo do Relatório</button>
+          <button type="button" class="mini-btn btn-secondary" data-action="back-reports">Voltar</button>
+        </div>
       </div>
       <div class="table-scroll" tabindex="0" role="region"
         aria-label="Itens do relatório ${escapeHtml(meta.id)}">
@@ -5008,7 +5487,7 @@ async function apagarRelatorio(id){
       throw new AdminRequestError(getErrorMessage(resp, "Não foi possível apagar."));
     }
     showToast('Relatório apagado.');
-    await carregarRelatorios();
+    await carregarRelatorios(reportPage);
   } catch (error) {
     if (!(error instanceof AdminAuthenticationRequiredError)) {
       showToast(error.message || "Não foi possível apagar.", false);
@@ -5073,7 +5552,27 @@ document.getElementById('btnRefreshDavez').addEventListener('click', ()=>carrega
 const btnRefreshLogs = document.getElementById('btnRefreshLogs');
 if (btnRefreshLogs) btnRefreshLogs.addEventListener('click', carregarLogs);
 document.querySelectorAll('.ranking-period').forEach(botao => {
-  botao.addEventListener('click', () => carregarRanking(botao.dataset.periodo));
+  botao.addEventListener('click', () => {
+    rankingDateFrom = '';
+    rankingDateTo = '';
+    carregarRanking(botao.dataset.periodo, 1);
+  });
+});
+document.getElementById('btnApplyRankingRange').addEventListener('click', applyRankingRange);
+document.getElementById('btnClearRankingRange').addEventListener('click', clearRankingRange);
+document.getElementById('btnRankingPdf').addEventListener('click', downloadRankingPdf);
+document.getElementById('btnApplyReportFilters').addEventListener('click', applyReportFilters);
+document.getElementById('btnClearReportFilters').addEventListener('click', clearReportFilters);
+document.getElementById('btnReportsPdf').addEventListener('click', downloadReportsPdf);
+document.getElementById('rankingPagination').addEventListener('click', event => {
+  const button = event.target.closest('button[data-pager="ranking"]');
+  if (!button || button.disabled) return;
+  carregarRanking(rankingPeriodoAtual, Number(button.dataset.page) || 1);
+});
+document.getElementById('reportPagination').addEventListener('click', event => {
+  const button = event.target.closest('button[data-pager="reports"]');
+  if (!button || button.disabled) return;
+  carregarRelatorios(Number(button.dataset.page) || 1);
 });
 document.getElementById('manualForm').addEventListener('submit', event=>{
   event.preventDefault();
@@ -5149,8 +5648,11 @@ document.getElementById('lastReportBox').addEventListener('click', event=>{
   if (!button) return;
   const id = Number.parseInt(button.dataset.id || '0', 10);
   if (button.dataset.action === 'view-report') abrirRelatorio(id);
+  if (button.dataset.action === 'download-report' && id > 0) {
+    window.location.assign('report_pdf.php?id=' + encodeURIComponent(id));
+  }
   if (button.dataset.action === 'delete-report') apagarRelatorio(id);
-  if (button.dataset.action === 'back-reports') carregarRelatorios();
+  if (button.dataset.action === 'back-reports') carregarRelatorios(reportPage);
 });
 
 document.getElementById('adminDialogConfirm').addEventListener('click', ()=>closeAdminDialog(true));
@@ -5164,17 +5666,36 @@ document.getElementById('adminDialogLayer').addEventListener('click', event=>{
 document.addEventListener('keydown', handleDialogKeydown);
 window.addEventListener('afterprint', clearQrPrintSheet);
 
+async function syncServerClock(){
+  const chip = document.getElementById('serverClockChip');
+  if (!chip) return;
+  try {
+    const data = await fetchJsonAdmin('admin.php?action=server_time');
+    const serverEpoch = Number(data.epoch_ms);
+    if (!Number.isFinite(serverEpoch)) throw new Error('Relógio inválido.');
+    const driftSeconds = Math.round((Date.now() - serverEpoch) / 1000);
+    const driftAbs = Math.abs(driftSeconds);
+    chip.dataset.state = driftAbs <= 90 ? 'ok' : 'warn';
+    const status = driftAbs <= 90 ? 'sincronizado' : `diferença ${driftAbs}s`;
+    chip.innerHTML = `Relógio <strong>${escapeHtml(localTimeLabel(new Date(serverEpoch)))} · ${escapeHtml(status)}</strong>`;
+    chip.title = `Servidor: ${data.iso || ''} | Fuso: ${data.timezone || ''}`;
+  } catch (error) {
+    chip.dataset.state = 'warn';
+    chip.innerHTML = 'Relógio <strong>indisponível</strong>';
+  }
+}
+
 setInterval(carregar, 12000);
+setInterval(syncServerClock, 60000);
 setInterval(updateIssuedTicketCountdown, 1000);
 setInterval(refreshIndividualTicketStatus, 5000);
+initializeDateFields();
 initializePermanentQr();
 clearIssuedTicket();
 initMainSortable();
+syncServerClock();
 carregar();
 carregarRelatorios();
 </script>
-<div class="system-signature">
-YD 808 • CORE v1.5
-</div>
 </body>
 </html>

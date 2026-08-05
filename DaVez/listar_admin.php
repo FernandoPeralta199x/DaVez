@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../src/Security/Bootstrap.php';
 require_once __DIR__ . '/../src/Domain/OperationalCycle.php';
 require_once __DIR__ . '/../src/Domain/OperationalContext.php';
+require_once __DIR__ . '/../src/Database/bootstrap.php';
 
 davez_install_safe_exception_handler();
 davez_require_http_method('GET');
@@ -12,9 +13,11 @@ davez_require_admin();
 
 include __DIR__ . '/../config.php';
 
-date_default_timezone_set('America/Sao_Paulo');
+$operationalCycle = \DaVez\Domain\OperationalCycle::fromEnvironment();
+date_default_timezone_set($operationalCycle->timezone()->getName());
+davez_configure_operational_database_timezone($conn, $operationalCycle);
 $operationalContext = new \DaVez\Domain\OperationalContext(
-    new \DaVez\Domain\OperationalCycle()
+    $operationalCycle
 );
 $operationalDate = $operationalContext->date();
 

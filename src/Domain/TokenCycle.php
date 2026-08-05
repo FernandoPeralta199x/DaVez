@@ -33,13 +33,13 @@ final class TokenCycle
 
         $cycleStart = DateTimeImmutable::createFromFormat(
             '!Y-m-d H:i:s',
-            $tokenDate . ' 06:00:00',
+            $tokenDate . ' ' . $context->start()->format('H:i:s'),
             $context->reference()->getTimezone()
         );
 
         if ($cycleStart === false) {
             $cycleStart = new DateTimeImmutable(
-                $operationalDate . ' 06:00:00',
+                $operationalDate . ' ' . $context->start()->format('H:i:s'),
                 $context->reference()->getTimezone()
             );
         }

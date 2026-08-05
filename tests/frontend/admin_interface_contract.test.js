@@ -71,6 +71,22 @@ assert.match(
 );
 assert.match(interfaceSource, /id="ranking-title">Ranking de Motoboys<\/h2>/);
 assert.match(interfaceSource, /id="rankingBox"/);
+assert.match(interfaceSource, /id="rankingDateFrom"[^>]*type="date"/);
+assert.match(interfaceSource, /id="rankingDateTo"[^>]*type="date"/);
+assert.match(interfaceSource, /id="rankingPagination"/);
+assert.match(interfaceSource, /id="reportPagination"/);
+assert.match(interfaceSource, /id="btnRankingPdf"/);
+assert.match(interfaceSource, /id="btnReportsPdf"/);
+assert.match(interfaceSource, /id="serverClockChip"/);
+assert.match(interfaceSource, /class="admin-app"/);
+assert.match(interfaceSource, /assets\/css\/davez-tech-rc2\.css/);
+assert.match(inlineScript, /ranking_pdf\.php\?/);
+assert.match(inlineScript, /reports_pdf\.php/);
+assert.match(inlineScript, /async function syncServerClock\(/);
+assert.doesNotMatch(interfaceSource, /YD 808|CORE v1\.5|system-signature/);
+assert.doesNotMatch(interfaceSource, /código de uso único/i);
+assert.match(interfaceSource, /id="btnApplyReportFilters"/);
+assert.match(inlineScript, /report_pdf\.php\?id=/);
 assert.match(interfaceSource, /data-periodo="dia"[\s\S]*?data-periodo="semana"[\s\S]*?data-periodo="mes"/);
 assert.match(inlineScript, /async function carregarRanking\(/);
 // Regressão: o campo de configuração é carregado por carregarConfig() ao
@@ -82,7 +98,7 @@ assert.equal(
   1,
   "o campo de latitude só pode ser preenchido em um lugar (carregarConfig), não no polling"
 );
-assert.match(inlineScript, /admin\.php\?action=ranking/);
+assert.match(inlineScript, /new URLSearchParams\(\{[\s\S]*?action:'ranking'/);
 assert.match(inlineScript, /if \(id === 'ranking'\) carregarRanking/);
 assert.match(
   interfaceSource,
@@ -160,8 +176,8 @@ assert.match(inlineScript, /typeof window\.Sortable\.create/);
 
 assert.match(interfaceSource, /<table class="report-table">/);
 assert.match(interfaceSource, /<caption>/);
-// 5 cabeçalhos da tabela de itens do relatório + 6 do ranking embutido.
-assert.equal((interfaceSource.match(/<th scope="col">/g) || []).length, 11);
+// 8 cabeçalhos da lista profissional + 5 dos itens + 6 do ranking embutido.
+assert.equal((interfaceSource.match(/<th scope="col">/g) || []).length, 19);
 assert.match(interfaceSource, /class="table-scroll" tabindex="0" role="region"/);
 assert.match(interfaceSource, /report-rank-title">Ranking do período</);
 assert.match(interfaceSource, /<th scope="col">Score<\/th>/);

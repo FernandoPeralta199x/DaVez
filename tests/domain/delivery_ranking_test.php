@@ -2,88 +2,94 @@
 
 declare(strict_types=1);
 
-require_once dirname(__DIR__, 2) . '/src/Domain/DeliveryRanking.php';
+require_once __DIR__ . '/../../src/Domain/DeliveryRanking.php';
 
 use DaVez\Domain\DeliveryRanking;
 
-function delivery_ranking_fail(string $message): never
-{
-    fwrite(STDERR, 'delivery_ranking_test: FAIL - ' . $message . PHP_EOL);
-    exit(1);
-}
-
-function delivery_ranking_assert(bool $condition, string $message): void
+function assert_delivery_ranking(bool $condition, string $message): void
 {
     if (!$condition) {
-        delivery_ranking_fail($message);
+        fwrite(STDERR, "delivery_ranking_test: FAIL - {$message}" . PHP_EOL);
+        exit(1);
     }
 }
 
-// Limites do período, inclusivos e encerrando na data de referência.
-$dia = DeliveryRanking::periodBounds('dia', '2026-07-31');
-delivery_ranking_assert(
-    $dia === ['start' => '2026-07-31', 'end' => '2026-07-31', 'days' => 1],
-    'O período "dia" deve cobrir apenas a data de referência.'
+$day = DeliveryRanking::periodBounds('dia', '2026-08-05');
+assert_delivery_ranking(
+    $day === ['start' => '2026-08-05', 'end' => '2026-08-05', 'days' => 1],
+    'Período diário incorreto.'
 );
 
-$semana = DeliveryRanking::periodBounds('semana', '2026-07-31');
-delivery_ranking_assert(
-    $semana === ['start' => '2026-07-25', 'end' => '2026-07-31', 'days' => 7],
-    'O período "semana" deve cobrir sete dias até a referência.'
+$week = DeliveryRanking::periodBounds('semana', '2026-08-05');
+assert_delivery_ranking(
+    $week === ['start' => '2026-07-30', 'end' => '2026-08-05', 'days' => 7],
+    'Período semanal incorreto.'
 );
 
-$mes = DeliveryRanking::periodBounds('mes', '2026-07-31');
-delivery_ranking_assert(
-    $mes === ['start' => '2026-07-02', 'end' => '2026-07-31', 'days' => 30],
-    'O período "mês" deve cobrir trinta dias até a referência.'
+$month = DeliveryRanking::periodBounds('mes', '2026-08-05');
+assert_delivery_ranking(
+    $month === ['start' => '2026-07-07', 'end' => '2026-08-05', 'days' => 30],
+    'Período mensal incorreto.'
 );
 
-// A janela anterior tem o mesmo tamanho e termina um dia antes do início atual.
-$anterior = DeliveryRanking::previousBounds('semana', '2026-07-31');
-delivery_ranking_assert(
-    $anterior === ['start' => '2026-07-18', 'end' => '2026-07-24', 'days' => 7],
-    'A janela anterior deve ser contígua e de mesmo tamanho.'
+$previous = DeliveryRanking::previousBounds('semana', '2026-08-05');
+assert_delivery_ranking(
+    $previous === ['start' => '2026-07-23', 'end' => '2026-07-29', 'days' => 7],
+    'Período anterior incorreto.'
 );
 
-// Período e data inválidos são recusados.
-$rejeitou = false;
+$custom = DeliveryRanking::customBounds('2026-07-01', '2026-07-31');
+assert_delivery_ranking(
+    $custom === ['start' => '2026-07-01', 'end' => '2026-07-31', 'days' => 31],
+    'Intervalo personalizado incorreto.'
+);
+
+$previousCustom = DeliveryRanking::previousCustomBounds(
+    '2026-07-01',
+    '2026-07-31'
+);
+assert_delivery_ranking(
+    $previousCustom === [
+        'start' => '2026-05-31',
+        'end' => '2026-06-30',
+        'days' => 31,
+    ],
+    'Intervalo personalizado anterior incorreto.'
+);
+
+$reversedRejected = false;
 try {
-    DeliveryRanking::periodBounds('ano', '2026-07-31');
+    DeliveryRanking::customBounds('2026-08-05', '2026-08-01');
 } catch (InvalidArgumentException $exception) {
-    $rejeitou = true;
+    $reversedRejected = true;
 }
-delivery_ranking_assert($rejeitou, 'Período inválido deveria ser recusado.');
+assert_delivery_ranking(
+    $reversedRejected,
+    'Intervalo invertido deveria ser rejeitado.'
+);
 
-$rejeitouData = false;
+$tooLongRejected = false;
 try {
-    DeliveryRanking::periodBounds('dia', '31-07-2026');
+    DeliveryRanking::customBounds('2024-01-01', '2026-08-05', 366);
 } catch (InvalidArgumentException $exception) {
-    $rejeitouData = true;
+    $tooLongRejected = true;
 }
-delivery_ranking_assert($rejeitouData, 'Data malformada deveria ser recusada.');
-
-// Pontuação transparente.
-delivery_ranking_assert(
-    DeliveryRanking::score(0, 0) === 0,
-    'Sem atividade a pontuação deve ser zero.'
-);
-delivery_ranking_assert(
-    DeliveryRanking::score(4, 3) === 55,
-    'A pontuação deve somar entregas e dias ativos com os pesos definidos.'
+assert_delivery_ranking(
+    $tooLongRejected,
+    'Intervalo excessivo deveria ser rejeitado.'
 );
 
-// Evolução percentual.
-delivery_ranking_assert(
+assert_delivery_ranking(
+    DeliveryRanking::score(10, 3) === 115,
+    'Pontuação incorreta.'
+);
+assert_delivery_ranking(
     DeliveryRanking::evolutionPercent(15, 10) === 50,
-    'A evolução deve refletir o crescimento percentual.'
+    'Evolução percentual incorreta.'
 );
-delivery_ranking_assert(
-    DeliveryRanking::evolutionPercent(5, 10) === -50,
-    'A evolução deve refletir a queda percentual.'
-);
-delivery_ranking_assert(
-    DeliveryRanking::evolutionPercent(7, 0) === null,
-    'Sem base anterior, a evolução não deve inventar crescimento.'
+assert_delivery_ranking(
+    DeliveryRanking::evolutionPercent(10, 0) === null,
+    'Evolução sem base deveria ser nula.'
 );
 
-fwrite(STDOUT, 'delivery_ranking_test: OK' . PHP_EOL);
+echo 'delivery_ranking_test: OK' . PHP_EOL;

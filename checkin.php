@@ -64,10 +64,11 @@ if (!$checkinRate['allowed']) {
 include __DIR__ . '/config.php';
 include __DIR__ . '/log.php';
 
-date_default_timezone_set('America/Sao_Paulo');
-$conn->query("SET time_zone = '-03:00'");
+$operationalCycle = \DaVez\Domain\OperationalCycle::fromEnvironment();
+date_default_timezone_set($operationalCycle->timezone()->getName());
+davez_configure_operational_database_timezone($conn, $operationalCycle);
 $operationalContext = new \DaVez\Domain\OperationalContext(
-    new \DaVez\Domain\OperationalCycle()
+    $operationalCycle
 );
 $operationalStart = $operationalContext->startSql();
 $operationalEnd = $operationalContext->endSql();

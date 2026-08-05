@@ -21,8 +21,12 @@ if ((Test-Path -LiteralPath $stageRoot) -or (Test-Path -LiteralPath $archivePath
 $releaseFiles = @(
     '.htaccess',
     '.env.example',
+    'BUILD_INFO.json',
+    'CHANGELOG_RC1.md',
+    'CHANGELOG_RC2.md',
     'README.md',
     'SECURITY.md',
+    'VERSION',
     'admin.php',
     'checkin.php',
     'client_log.php',
@@ -32,6 +36,9 @@ $releaseFiles = @(
     'log.php',
     'manifest.json',
     'public_logout.php',
+    'ranking_pdf.php',
+    'report_pdf.php',
+    'reports_pdf.php',
     'recover.php',
     'relogin.php',
     'service-worker.js',
@@ -40,6 +47,7 @@ $releaseFiles = @(
 
 $releaseDirectories = @(
     'DaVez',
+    'assets',
     'database/migrations',
     'docs',
     'icons',
@@ -77,15 +85,22 @@ foreach ($relativePath in $releaseDirectories) {
     Copy-Item -LiteralPath $source -Destination $destination -Recurse
 }
 
+$forbiddenRootDirectoryNames = @(
+    'logs',
+    'reports',
+    'tests'
+)
+$forbiddenRootDirectories = $forbiddenRootDirectoryNames |
+    ForEach-Object { Join-Path $stageRoot $_ } |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Container } |
+    ForEach-Object { Get-Item -LiteralPath $_ }
+
 $forbiddenDirectoryNames = @(
     '.git',
     '.private',
     'artifacts',
     'coverage',
-    'logs',
     'node_modules',
-    'reports',
-    'tests',
     'vendor'
 )
 $forbiddenDirectories = Get-ChildItem -LiteralPath $stageRoot -Recurse -Force -Directory |
@@ -110,8 +125,8 @@ $forbiddenFiles = Get-ChildItem -LiteralPath $stageRoot -Recurse -Force -File |
         $isCompressedSql
     }
 
-if ($forbiddenDirectories -or $forbiddenFiles) {
-    $forbiddenEntries = @($forbiddenDirectories) + @($forbiddenFiles)
+if ($forbiddenRootDirectories -or $forbiddenDirectories -or $forbiddenFiles) {
+    $forbiddenEntries = @($forbiddenRootDirectories) + @($forbiddenDirectories) + @($forbiddenFiles)
     $relativeForbidden = $forbiddenEntries |
         ForEach-Object { [IO.Path]::GetRelativePath($stageRoot, $_.FullName) }
     throw "Caminhos proibidos no artefato: $($relativeForbidden -join ', ')"

@@ -17,7 +17,8 @@ function request(path, options = {}) {
   };
 }
 
-assert.equal(CACHE_NAME, "motoboys-static-v9");
+assert.equal(CACHE_NAME, "motoboys-static-v11");
+assert.ok(STATIC_ASSET_PATHS.includes("./assets/css/davez-tech-rc2.css"));
 
 for (const assetPath of STATIC_ASSET_PATHS) {
   assert.equal(
@@ -123,7 +124,7 @@ async function testFetchEventBoundary() {
       "motoboys-static-v5",
       "motoboys-static-v7",
       "motoboys-static-v8",
-      "motoboys-static-v9",
+      "motoboys-static-v11",
       "cache-de-outra-aplicacao",
     ],
     delete: async cacheName => {

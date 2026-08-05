@@ -7,6 +7,7 @@ require_once __DIR__ . '/../src/Security/PublicIdentityAuth.php';
 require_once __DIR__ . '/../src/Domain/OperationalCycle.php';
 require_once __DIR__ . '/../src/Domain/OperationalContext.php';
 require_once __DIR__ . '/../src/Http/PublicIdentityView.php';
+require_once __DIR__ . '/../src/Database/bootstrap.php';
 
 davez_install_safe_exception_handler();
 davez_require_http_method('GET');
@@ -40,10 +41,11 @@ if (!$listRate['allowed']) {
 
 include __DIR__ . '/../config.php';
 
-date_default_timezone_set('America/Sao_Paulo');
-$conn->query("SET time_zone = '-03:00'");
+$operationalCycle = \DaVez\Domain\OperationalCycle::fromEnvironment();
+date_default_timezone_set($operationalCycle->timezone()->getName());
+davez_configure_operational_database_timezone($conn, $operationalCycle);
 $operationalContext = new \DaVez\Domain\OperationalContext(
-    new \DaVez\Domain\OperationalCycle()
+    $operationalCycle
 );
 $operationalDate = $operationalContext->date();
 

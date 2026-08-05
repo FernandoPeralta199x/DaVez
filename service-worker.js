@@ -1,4 +1,4 @@
-const CACHE_NAME = "motoboys-static-v9";
+const CACHE_NAME = "motoboys-static-v11";
 
 const STATIC_ASSET_PATHS = [
   "./index.html",
@@ -6,6 +6,7 @@ const STATIC_ASSET_PATHS = [
   "./icons/icon-192.png",
   "./icons/icon-512-v2.png",
   "./img/logo.png",
+  "./assets/css/davez-tech-rc2.css",
 ];
 
 const REQUEST_STRATEGY = Object.freeze({

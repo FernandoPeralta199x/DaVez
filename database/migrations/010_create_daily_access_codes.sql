@@ -5,7 +5,7 @@
 -- Diferente de admission_tickets (uso único, TTL de 10 minutos), este código é
 -- reutilizável durante todo o ciclo operacional: serve para o primeiro check-in,
 -- para re-entrar na fila após uma entrega e para recuperar a sessão em qualquer
--- aparelho. Expira na virada do ciclo (06:00) e é renovado no dia seguinte.
+-- aparelho. Expira na virada do ciclo operacional configurado e é renovado no dia seguinte.
 
 CREATE TABLE IF NOT EXISTS daily_access_codes (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

@@ -7,8 +7,8 @@ require_once __DIR__ . '/../../src/Domain/ReportSnapshot.php';
 use DaVez\Domain\ReportSnapshot;
 
 $snapshot = ReportSnapshot::build(
-    '2026-07-29 06:00:00',
-    '2026-07-30 06:00:00',
+    '2026-07-29 01:30:00',
+    '2026-07-30 01:30:00',
     [
         ['nome' => 'Ana', 'is_closed' => 1],
         ['nome' => ' ana ', 'is_closed' => 0],

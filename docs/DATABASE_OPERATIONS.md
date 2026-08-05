@@ -37,15 +37,15 @@ A regra de domínio centralizada em
 `src/Domain/OperationalCycle.php` define:
 
 - timezone: `America/Sao_Paulo`;
-- início inclusivo: 06:00:00;
-- término exclusivo: 06:00:00 do dia seguinte;
+- início inclusivo: 01:30:00 por padrão (configurável por `APP_OPERATIONAL_CYCLE_TIME`);
+- término exclusivo: 01:30:00 do dia seguinte, usando a mesma configuração;
 - data operacional: data civil do início do ciclo.
 
 Exemplo:
 
 ```text
 2026-07-29 05:59:59 -> ciclo 2026-07-28
-2026-07-29 06:00:00 -> ciclo 2026-07-29
+2026-07-29 01:30:00 -> ciclo 2026-07-29
 ```
 
 ### Integração em runtime

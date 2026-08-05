@@ -288,3 +288,6 @@ for (const icon of manifest.icons) {
 }
 
 console.log("public_interface_accessibility_test: OK");
+
+assert.match(html, /<body class="public-app">/);
+assert.match(html, /assets\/css\/davez-tech-rc2\.css/);

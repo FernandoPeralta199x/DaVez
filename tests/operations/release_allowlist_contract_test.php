@@ -82,6 +82,14 @@ $forbiddenDirectoryEntries = [
     'tests',
     'vendor',
 ];
+$forbiddenNestedDirectoryEntries = [
+    '.git',
+    '.private',
+    'artifacts',
+    'coverage',
+    'node_modules',
+    'vendor',
+];
 foreach ($forbiddenDirectoryEntries as $forbiddenEntry) {
     assert_release_contract(
         !in_array($forbiddenEntry, $releaseDirectories, true),
@@ -105,6 +113,7 @@ assert_release_contract(
 );
 
 $requiredStageGuards = [
+    '$forbiddenRootDirectoryNames',
     '$forbiddenDirectoryNames',
     "'logs'",
     "'reports'",
@@ -145,7 +154,7 @@ foreach ($releaseDirectories as $relativeDirectory) {
         );
         $segments = explode('/', strtolower($relativeEntry));
 
-        foreach ($forbiddenDirectoryEntries as $forbiddenSegment) {
+        foreach ($forbiddenNestedDirectoryEntries as $forbiddenSegment) {
             assert_release_contract(
                 !in_array(strtolower($forbiddenSegment), $segments, true),
                 "{$relativeDirectory} contém o caminho proibido {$relativeEntry}."

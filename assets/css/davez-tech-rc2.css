@@ -1,0 +1,495 @@
+/* DaVez RC2 - camada visual progressiva e compartilhada. */
+:root {
+  --davez-electric: #4f7cff;
+  --davez-cyan: #43d9ff;
+  --davez-orange: #ff9b42;
+  --davez-green: #32d399;
+  --davez-tech-line: color-mix(in srgb, var(--davez-electric) 24%, transparent);
+  --davez-tech-grid: color-mix(in srgb, var(--davez-electric) 8%, transparent);
+  --davez-tech-shadow: 0 24px 70px rgba(2, 10, 26, 0.22);
+}
+
+body.public-app,
+body.admin-app {
+  isolation: isolate;
+}
+
+body.public-app::after,
+body.admin-app::after {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  content: "";
+  background-image:
+    linear-gradient(var(--davez-tech-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--davez-tech-grid) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 92%);
+}
+
+body.public-app .card-shell,
+body.admin-app .admin-header,
+body.admin-app .card,
+body.admin-app .mcard {
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+}
+
+body.public-app .card-shell {
+  position: relative;
+  max-width: 35rem;
+  border-color: color-mix(in srgb, var(--davez-electric) 24%, transparent);
+  background:
+    linear-gradient(145deg, rgba(79, 124, 255, 0.12), transparent 36%),
+    color-mix(in srgb, var(--surface) 78%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--davez-cyan) 10%, transparent),
+    var(--davez-tech-shadow);
+}
+
+body.public-app .card-shell::before {
+  position: absolute;
+  inset: 0.55rem;
+  z-index: -1;
+  border: 1px solid color-mix(in srgb, var(--davez-cyan) 12%, transparent);
+  border-radius: 1.82rem;
+  pointer-events: none;
+  content: "";
+}
+
+body.public-app .card::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    radial-gradient(circle at 8% 3%, rgba(67, 217, 255, 0.10), transparent 22rem),
+    radial-gradient(circle at 96% 92%, rgba(255, 155, 66, 0.08), transparent 18rem);
+}
+
+body.public-app .card > * {
+  position: relative;
+  z-index: 1;
+}
+
+body.public-app .access-header {
+  padding-bottom: 1.1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+}
+
+body.public-app .logo-top {
+  box-shadow:
+    0 14px 40px rgba(10, 28, 66, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.78);
+}
+
+body.public-app .eyebrow {
+  letter-spacing: 0.16em;
+}
+
+body.public-app input {
+  min-height: 3.25rem;
+  border-color: color-mix(in srgb, var(--route) 24%, var(--line));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+body.public-app input:focus {
+  border-color: var(--davez-cyan);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--davez-cyan) 18%, transparent),
+    0 14px 34px rgba(22, 79, 201, 0.10);
+}
+
+body.public-app #btn,
+body.public-app #btnRecover,
+body.public-app .pwa-btn {
+  position: relative;
+  overflow: hidden;
+  letter-spacing: 0.01em;
+}
+
+body.public-app #btn::after,
+body.public-app #btnRecover::after,
+body.public-app .pwa-btn::after,
+body.admin-app .btn-primary::after,
+body.admin-app .pdf-action::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background: linear-gradient(110deg, transparent 15%, rgba(255,255,255,.20) 42%, transparent 68%);
+  transform: translateX(-125%);
+  transition: transform 520ms cubic-bezier(.2,.8,.2,1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  body.public-app #btn:hover::after,
+  body.public-app #btnRecover:hover::after,
+  body.public-app .pwa-btn:hover::after,
+  body.admin-app .btn-primary:hover::after,
+  body.admin-app .pdf-action:hover::after {
+    transform: translateX(125%);
+  }
+}
+
+body.admin-app {
+  background:
+    radial-gradient(circle at 4% 2%, color-mix(in srgb, var(--davez-electric) 18%, transparent), transparent 34rem),
+    radial-gradient(circle at 94% 84%, color-mix(in srgb, var(--davez-orange) 10%, transparent), transparent 28rem),
+    var(--canvas);
+}
+
+body.admin-app .container {
+  width: min(100%, 1560px);
+}
+
+body.admin-app .admin-system-rail {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-bottom: 0.8rem;
+  padding: 0.15rem 0.2rem;
+}
+
+body.admin-app .admin-system-chip {
+  min-height: 2rem;
+  padding: 0.45rem 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--davez-electric) 22%, var(--line));
+  background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+body.admin-app .admin-system-chip[data-state="ok"]::before,
+body.admin-app .admin-system-chip[data-online]::before {
+  background: var(--davez-green);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--davez-green) 13%, transparent), 0 0 14px var(--davez-green);
+}
+
+body.admin-app .admin-system-chip[data-state="warn"]::before {
+  background: var(--davez-orange);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--davez-orange) 13%, transparent), 0 0 14px var(--davez-orange);
+}
+
+body.admin-app .admin-header {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(1.1rem, 2.3vw, 1.7rem);
+  border: 1px solid color-mix(in srgb, var(--davez-electric) 22%, var(--line));
+  border-radius: 1.35rem;
+  background:
+    linear-gradient(115deg, color-mix(in srgb, var(--surface-raised) 94%, transparent), color-mix(in srgb, var(--accent-soft) 48%, transparent));
+  box-shadow: var(--davez-tech-shadow);
+}
+
+body.admin-app .admin-header::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--davez-cyan) 7%, transparent), transparent),
+    repeating-linear-gradient(0deg, transparent 0 7px, rgba(255,255,255,.018) 7px 8px);
+}
+
+body.admin-app .admin-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+body.admin-app .titulo-admin img {
+  padding: 0.4rem 0.65rem;
+  border-radius: 0.9rem;
+  background: #f7f9ff;
+  box-shadow: 0 12px 32px rgba(2, 10, 26, 0.20);
+}
+
+body.admin-app .tabs-wrap {
+  border-color: color-mix(in srgb, var(--davez-electric) 20%, var(--line));
+  background: color-mix(in srgb, var(--canvas) 86%, transparent);
+}
+
+body.admin-app .tab {
+  position: relative;
+  min-height: 3rem;
+}
+
+body.admin-app .tab::after {
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 0.22rem;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--davez-cyan), transparent);
+  opacity: 0;
+  content: "";
+  transform: scaleX(0.2);
+  transition: opacity .2s ease, transform .2s ease;
+}
+
+body.admin-app .tab[aria-selected="true"]::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+body.admin-app .card,
+body.admin-app .mcard {
+  border-color: color-mix(in srgb, var(--davez-electric) 17%, var(--line));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 18px 48px rgba(2, 10, 26, 0.13);
+}
+
+body.admin-app .card::after,
+body.admin-app .mcard::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background: linear-gradient(120deg, color-mix(in srgb, var(--davez-electric) 5%, transparent), transparent 34%);
+}
+
+body.admin-app .card > *,
+body.admin-app .mcard > * {
+  position: relative;
+  z-index: 1;
+}
+
+body.admin-app .section-heading-pro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.1rem;
+}
+
+body.admin-app .section-heading-pro h2 {
+  margin-bottom: 0.25rem;
+}
+
+body.admin-app .section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+body.admin-app .pdf-action,
+body.admin-app .btn-export {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 2.8rem;
+  padding: 0.72rem 1rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--davez-cyan) 36%, var(--line));
+  border-radius: 0.8rem;
+  color: #f8fbff;
+  background: linear-gradient(112deg, #2f65ea, #477fff 58%, #268fc5);
+  box-shadow: 0 12px 28px rgba(47, 101, 234, 0.26);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+body.admin-app .pdf-action svg,
+body.admin-app .btn-export svg {
+  flex: 0 0 auto;
+}
+
+body.admin-app .ranking-custom-filter,
+body.admin-app .report-filter-bar {
+  padding: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--davez-electric) 18%, var(--line));
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--surface-muted) 72%, transparent);
+}
+
+body.admin-app .date-combo {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 2.9rem;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+body.admin-app .date-combo input[type="text"] {
+  min-width: 0;
+  padding-right: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+body.admin-app .date-picker-button {
+  display: inline-grid;
+  place-items: center;
+  min-width: 2.9rem;
+  min-height: 2.9rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--davez-electric) 26%, var(--line));
+  border-radius: 0.75rem;
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent-soft) 72%, var(--surface-raised));
+}
+
+body.admin-app .native-date-proxy {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.admin-app .date-format-hint {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+}
+
+body.admin-app .analytics-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin: 0.9rem 0 1rem;
+}
+
+body.admin-app .analytics-card {
+  min-width: 0;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--davez-electric) 16%, var(--line));
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
+}
+
+body.admin-app .analytics-card span {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+body.admin-app .analytics-card strong {
+  display: block;
+  margin-top: 0.22rem;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: clamp(1rem, 2.4vw, 1.4rem);
+  font-variant-numeric: tabular-nums;
+}
+
+body.admin-app .ranking-row {
+  border-color: color-mix(in srgb, var(--davez-electric) 16%, var(--line));
+  background: linear-gradient(110deg, color-mix(in srgb, var(--surface-raised) 96%, transparent), color-mix(in srgb, var(--accent-soft) 22%, transparent));
+}
+
+body.admin-app .ranking-row[data-top="1"] {
+  border-color: color-mix(in srgb, #f8c855 58%, var(--line));
+  box-shadow: 0 14px 32px rgba(194, 139, 19, 0.13);
+}
+
+body.admin-app .table-scroll {
+  border: 1px solid color-mix(in srgb, var(--davez-electric) 14%, var(--line));
+  border-radius: 0.9rem;
+}
+
+body.admin-app .report-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--surface-raised) 94%, var(--accent-soft));
+  box-shadow: 0 1px 0 var(--line);
+}
+
+body.admin-app .pagination-bar button {
+  min-width: 2.8rem;
+}
+
+
+@media (max-width: 860px) {
+  body.admin-app .section-heading-pro {
+    flex-direction: column;
+  }
+  body.admin-app .section-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  body.admin-app .analytics-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  body.admin-app .pdf-action,
+  body.admin-app .btn-export {
+    width: 100%;
+  }
+  body.admin-app .admin-system-rail {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  body.admin-app .admin-system-chip {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.public-app *,
+  body.admin-app * {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  body.admin-app .pdf-action,
+  body.admin-app .btn-export,
+  body.admin-app .date-picker-button {
+    border: 1px solid ButtonText;
+  }
+}
+
+body.admin-app .report-index-scroll {
+  margin-top: 0.9rem;
+}
+
+body.admin-app .report-index-table {
+  min-width: 880px;
+}
+
+body.admin-app .report-index-table td {
+  vertical-align: middle;
+}
+
+body.admin-app .report-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.8rem;
+  padding: 0.3rem 0.58rem;
+  border: 1px solid color-mix(in srgb, var(--davez-green) 30%, var(--line));
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--davez-green) 76%, var(--ink));
+  background: color-mix(in srgb, var(--davez-green) 12%, var(--surface-raised));
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+body.admin-app .report-table-actions {
+  flex-wrap: nowrap;
+}
+
+body.admin-app [aria-invalid="true"] {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 16%, transparent) !important;
+}

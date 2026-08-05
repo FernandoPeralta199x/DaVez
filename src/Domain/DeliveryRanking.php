@@ -18,8 +18,8 @@ final class DeliveryRanking
 {
     public const PERIODS = ['dia', 'semana', 'mes'];
 
-    private const PONTOS_POR_ENTREGA = 10;
-    private const PONTOS_POR_DIA_ATIVO = 5;
+    public const POINTS_PER_DELIVERY = 10;
+    public const POINTS_PER_ACTIVE_DAY = 5;
 
     /**
      * Janela [inicio, fim] em Y-m-d, inclusiva, encerrando na data de
@@ -76,6 +76,68 @@ final class DeliveryRanking
         );
     }
 
+
+    /**
+     * Janela personalizada inclusiva, limitada para evitar consultas abusivas.
+     *
+     * @return array{start: string, end: string, days: int}
+     */
+    public static function customBounds(
+        string $dateFrom,
+        string $dateTo,
+        int $maximumDays = 366
+    ): array {
+        if ($maximumDays < 1 || $maximumDays > 3660) {
+            throw new InvalidArgumentException('Limite de intervalo inválido.');
+        }
+
+        $start = self::parseDate($dateFrom);
+        $end = self::parseDate($dateTo);
+
+        if ($end < $start) {
+            throw new InvalidArgumentException(
+                'A data final não pode ser anterior à data inicial.'
+            );
+        }
+
+        $days = (int) $start->diff($end)->format('%a') + 1;
+        if ($days > $maximumDays) {
+            throw new InvalidArgumentException(
+                'O intervalo solicitado excede o limite permitido.'
+            );
+        }
+
+        return [
+            'start' => $start->format('Y-m-d'),
+            'end' => $end->format('Y-m-d'),
+            'days' => $days,
+        ];
+    }
+
+    /**
+     * Janela anterior de mesmo tamanho para comparação de evolução.
+     *
+     * @return array{start: string, end: string, days: int}
+     */
+    public static function previousCustomBounds(
+        string $dateFrom,
+        string $dateTo,
+        int $maximumDays = 366
+    ): array {
+        $current = self::customBounds($dateFrom, $dateTo, $maximumDays);
+        $start = self::parseDate($current['start']);
+        $previousEnd = $start->modify('-1 day');
+        $previousStart = $previousEnd->modify(
+            '-' . ($current['days'] - 1) . ' days'
+        );
+
+        return [
+            'start' => $previousStart->format('Y-m-d'),
+            'end' => $previousEnd->format('Y-m-d'),
+            'days' => $current['days'],
+        ];
+    }
+
     public static function periodLength(string $periodo): int
     {
         switch ($periodo) {
@@ -100,8 +162,8 @@ final class DeliveryRanking
             throw new InvalidArgumentException('Contagens não podem ser negativas.');
         }
 
-        return $entregas * self::PONTOS_POR_ENTREGA
-            + $diasAtivos * self::PONTOS_POR_DIA_ATIVO;
+        return $entregas * self::POINTS_PER_DELIVERY
+            + $diasAtivos * self::POINTS_PER_ACTIVE_DAY;
     }
 
     /**
@@ -117,5 +179,16 @@ final class DeliveryRanking
         }
 
         return (int) round((($atual - $anterior) / $anterior) * 100);
+    }
+
+    private static function parseDate(string $value): DateTimeImmutable
+    {
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+
+        if ($date === false || $date->format('Y-m-d') !== $value) {
+            throw new InvalidArgumentException('Data inválida.');
+        }
+
+        return $date;
     }
 }

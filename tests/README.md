@@ -90,3 +90,26 @@ Impede o retorno de autenticação Basic/senha em texto puro, mutações
 administrativas por GET, respostas com `sql_error`/`debug` e endpoints sem os
 controles obrigatórios. Também compila o JavaScript inline do painel sem
 executá-lo.
+
+### Ranking paginado e PDFs do RC2
+
+```powershell
+php tests/database/ranking_query_policy_test.php
+node tests/security/pdf_endpoints_policy.test.js
+php tests/domain/simple_pdf_document_test.php
+```
+
+O contrato confirma paginação no banco, placeholders para filtros dinâmicos,
+autenticação/rate limit nos downloads e geração PDF autocontida. A qualidade do
+plano de execução e a concorrência ainda exigem MySQL 8.4 com dados
+representativos.
+
+### Interface RC2
+
+```powershell
+node tests/frontend/admin_interface_contract.test.js
+node tests/frontend/public_interface_accessibility.test.js
+```
+
+Valida os botões PDF, filtros manuais/calendário, remoção da assinatura de canto,
+camada visual externa, semântica das tabelas e acessibilidade estrutural.
