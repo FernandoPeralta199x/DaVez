@@ -64,6 +64,8 @@ $expectedMigrations = [
     '012_add_tenant_id_columns.sql',
     '013_backfill_legacy_tenant.sql',
     '014_add_tenant_indexes.sql',
+    '015_create_users.sql',
+    '016_create_admin_sessions.sql',
 ];
 $actualMigrations = array_map(
     'basename',
@@ -73,7 +75,7 @@ sort($actualMigrations, SORT_STRING);
 
 assert_identity_v2_schema(
     $actualMigrations === $expectedMigrations,
-    'As migrations devem permanecer numeradas continuamente de 001 a 014.'
+    'As migrations devem permanecer numeradas continuamente de 001 a 016.'
 );
 
 $migrationContents = [];
