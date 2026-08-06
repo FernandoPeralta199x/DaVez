@@ -28,6 +28,7 @@ $releaseFiles = @(
     'SECURITY.md',
     'VERSION',
     'admin.php',
+    'admin_login.php',
     'checkin.php',
     'client_log.php',
     'config.example.php',
