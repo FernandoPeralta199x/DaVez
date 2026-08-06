@@ -60,6 +60,10 @@ $expectedMigrations = [
     '008_link_queue_to_checkins.sql',
     '009_create_delivery_events.sql',
     '010_create_daily_access_codes.sql',
+    '011_create_tenants.sql',
+    '012_add_tenant_id_columns.sql',
+    '013_backfill_legacy_tenant.sql',
+    '014_add_tenant_indexes.sql',
 ];
 $actualMigrations = array_map(
     'basename',
@@ -69,7 +73,7 @@ sort($actualMigrations, SORT_STRING);
 
 assert_identity_v2_schema(
     $actualMigrations === $expectedMigrations,
-    'As migrations devem permanecer numeradas continuamente de 001 a 010.'
+    'As migrations devem permanecer numeradas continuamente de 001 a 014.'
 );
 
 $migrationContents = [];
